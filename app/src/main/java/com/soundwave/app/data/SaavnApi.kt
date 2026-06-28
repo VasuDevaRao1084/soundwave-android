@@ -61,6 +61,31 @@ object SaavnApi {
         return list.firstOrNull()
     }
 
+    data class AlbumResult(val id: String, val name: String, val artist: String, val thumbnail: String?)
+
+    suspend fun searchAlbums(query: String): List<AlbumResult> {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val json = getJson("$BASE/search/albums?query=$encoded&limit=15")
+        val results = json.optJSONObject("data")?.optJSONArray("results") ?: JSONArray()
+        val list = mutableListOf<AlbumResult>()
+        for (i in 0 until results.length()) {
+            val o = results.optJSONObject(i) ?: continue
+            val artistNames = o.optJSONObject("artists")?.optJSONArray("primary")?.let { arr ->
+                (0 until arr.length()).joinToString(", ") { j -> arr.optJSONObject(j)?.optString("name") ?: "" }
+            } ?: o.optString("primaryArtists", "")
+            val images = o.optJSONArray("image")
+            val thumb = if (images != null && images.length() > 0) images.optJSONObject(images.length()-1)?.optString("url") else null
+            list.add(AlbumResult(o.optString("id"), htmlDecode(o.optString("name")), artistNames, thumb))
+        }
+        return list
+    }
+
+    suspend fun getAlbumSongs(albumId: String): List<Song> {
+        val json = getJson("$BASE/albums?id=$albumId")
+        val results = json.optJSONObject("data")?.optJSONArray("songs") ?: JSONArray()
+        return parseSongs(results)
+    }
+
     private fun parseSongs(arr: JSONArray): List<Song> {
         val list = mutableListOf<Song>()
         for (i in 0 until arr.length()) {

@@ -1,0 +1,270 @@
+package com.soundwave.app.viewmodel
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.soundwave.app.data.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+
+enum class RepeatMode { OFF, ALL, ONE }
+
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+
+    // ── Auth ──────────────────────────────────────────────────────────
+    private val _user = MutableStateFlow<UserProfile?>(null)
+    val user: StateFlow<UserProfile?> = _user.asStateFlow()
+
+    // ── Library ───────────────────────────────────────────────────────
+    private val _likedSongs = MutableStateFlow<List<Song>>(emptyList())
+    val likedSongs: StateFlow<List<Song>> = _likedSongs.asStateFlow()
+
+    private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
+    val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
+
+    private val _savedAlbums = MutableStateFlow<List<SavedAlbum>>(emptyList())
+    val savedAlbums: StateFlow<List<SavedAlbum>> = _savedAlbums.asStateFlow()
+
+    private val _recentlyPlayed = MutableStateFlow<List<Song>>(emptyList())
+    val recentlyPlayed: StateFlow<List<Song>> = _recentlyPlayed.asStateFlow()
+
+    // ── Search ────────────────────────────────────────────────────────
+    private val _searchResults = MutableStateFlow<List<Song>>(emptyList())
+    val searchResults: StateFlow<List<Song>> = _searchResults.asStateFlow()
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+
+    // ── Playback state (mirrors PlaybackService) ─────────────────────
+    private val _currentSong = MutableStateFlow<Song?>(null)
+    val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+    private val _queue = MutableStateFlow<List<Song>>(emptyList())
+    val queue: StateFlow<List<Song>> = _queue.asStateFlow()
+    private val _queueIndex = MutableStateFlow(0)
+    val queueIndex: StateFlow<Int> = _queueIndex.asStateFlow()
+    private val _shuffle = MutableStateFlow(false)
+    val shuffle: StateFlow<Boolean> = _shuffle.asStateFlow()
+    private val _repeat = MutableStateFlow(RepeatMode.OFF)
+    val repeat: StateFlow<RepeatMode> = _repeat.asStateFlow()
+    private val _progress = MutableStateFlow(0f) // seconds
+    val progress: StateFlow<Float> = _progress.asStateFlow()
+    private val _duration = MutableStateFlow(0f)
+    val duration: StateFlow<Float> = _duration.asStateFlow()
+    private val _sleepTimerMins = MutableStateFlow<Int?>(null)
+    val sleepTimerMins: StateFlow<Int?> = _sleepTimerMins.asStateFlow()
+
+    // Bridge to the real MediaController, set by MainActivity once connected
+    var controllerBridge: ControllerBridge? = null
+    interface ControllerBridge {
+        fun play(song: Song)
+        fun togglePlayPause()
+        fun seekTo(seconds: Float)
+        fun pause()
+        fun resume()
+    }
+
+    fun setUser(profile: UserProfile?) {
+        _user.value = profile
+        if (profile != null) loadUserData(profile.id)
+    }
+
+    fun isLiked(song: Song) = _likedSongs.value.any { it.id == song.id }
+
+    fun toggleLike(song: Song) {
+        val cur = _likedSongs.value
+        _likedSongs.value = if (cur.any { it.id == song.id }) cur.filterNot { it.id == song.id } else listOf(song) + cur
+        syncToCloud()
+    }
+
+    fun createPlaylist(name: String) {
+        _playlists.value = _playlists.value + Playlist(id = System.currentTimeMillis().toString(), name = name)
+        syncToCloud()
+    }
+
+    fun addToPlaylist(playlistId: String, song: Song) {
+        _playlists.value = _playlists.value.map {
+            if (it.id == playlistId && it.songs.none { s -> s.id == song.id }) {
+                Playlist(it.id, it.name, (it.songs + song).toMutableList())
+            } else it
+        }
+        syncToCloud()
+    }
+
+    fun deletePlaylist(playlistId: String) {
+        _playlists.value = _playlists.value.filterNot { it.id == playlistId }
+        syncToCloud()
+    }
+
+    fun saveAlbum(album: SavedAlbum) {
+        if (_savedAlbums.value.none { it.id == album.id }) {
+            _savedAlbums.value = _savedAlbums.value + album
+            syncToCloud()
+        }
+    }
+
+    fun removeAlbum(albumId: String) {
+        _savedAlbums.value = _savedAlbums.value.filterNot { it.id == albumId }
+        syncToCloud()
+    }
+
+    fun search(query: String) {
+        if (query.isBlank()) { _searchResults.value = emptyList(); return }
+        _isSearching.value = true
+        viewModelScope.launch {
+            try {
+                _searchResults.value = SaavnApi.search(query)
+            } catch (e: Exception) {
+                _searchResults.value = emptyList()
+            } finally {
+                _isSearching.value = false
+            }
+        }
+    }
+
+    fun playSong(song: Song, fromQueue: List<Song>? = null) {
+        _currentSong.value = song
+        _isPlaying.value = true
+        if (fromQueue != null) {
+            _queue.value = fromQueue
+            _queueIndex.value = fromQueue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+        }
+        controllerBridge?.play(song)
+        addToRecentlyPlayed(song)
+        _user.value?.let { u -> viewModelScope.launch { SupabaseClient.trackPlay(u.id, song) } }
+    }
+
+    fun togglePlayPause() {
+        _isPlaying.value = !_isPlaying.value
+        controllerBridge?.togglePlayPause()
+    }
+
+    /** Called when the real player's playing state changes for any reason
+     * (notification controls, headset buttons, etc.) — keeps our state truthful. */
+    fun syncPlayingState(playing: Boolean) {
+        _isPlaying.value = playing
+    }
+
+    fun next() {
+        val q = _queue.value
+        if (q.isEmpty()) return
+        val nextIdx = if (_shuffle.value) q.indices.random() else (_queueIndex.value + 1)
+        if (nextIdx >= q.size) {
+            if (_repeat.value == RepeatMode.ALL) playSong(q[0], q) else { _isPlaying.value = false }
+            return
+        }
+        playSong(q[nextIdx], q)
+    }
+
+    fun previous() {
+        val q = _queue.value
+        if (q.isEmpty()) return
+        val prevIdx = (_queueIndex.value - 1).coerceAtLeast(0)
+        playSong(q[prevIdx], q)
+    }
+
+    fun toggleShuffle() { _shuffle.value = !_shuffle.value }
+    fun cycleRepeat() {
+        _repeat.value = when (_repeat.value) {
+            RepeatMode.OFF -> RepeatMode.ALL
+            RepeatMode.ALL -> RepeatMode.ONE
+            RepeatMode.ONE -> RepeatMode.OFF
+        }
+    }
+
+    fun updateProgress(cur: Float, dur: Float) { _progress.value = cur; _duration.value = dur }
+    fun seekTo(seconds: Float) { controllerBridge?.seekTo(seconds) }
+
+    fun onTrackEnded() {
+        when (_repeat.value) {
+            RepeatMode.ONE -> controllerBridge?.let { _currentSong.value?.let(it::play) }
+            RepeatMode.ALL -> next()
+            RepeatMode.OFF -> if (_queueIndex.value < _queue.value.size - 1) next() else _isPlaying.value = false
+        }
+    }
+
+    private fun addToRecentlyPlayed(song: Song) {
+        val cur = _recentlyPlayed.value.filterNot { it.id == song.id }
+        _recentlyPlayed.value = (listOf(song) + cur).take(20)
+        syncToCloud()
+    }
+
+    fun setSleepTimer(mins: Int?) { _sleepTimerMins.value = mins }
+
+    // ── Cloud sync ────────────────────────────────────────────────────
+    private fun loadUserData(userId: String) {
+        viewModelScope.launch {
+            try {
+                val data = SupabaseClient.getUserData(userId) ?: return@launch
+                _likedSongs.value = parseSongsJson(data.optJSONArray("liked_songs"))
+                _recentlyPlayed.value = parseSongsJson(data.optJSONArray("recently_played"))
+                _playlists.value = parsePlaylistsJson(data.optJSONArray("playlists"))
+                _savedAlbums.value = parseAlbumsJson(data.optJSONArray("albums"))
+            } catch (_: Exception) { /* offline or first run, ignore */ }
+        }
+    }
+
+    private fun syncToCloud() {
+        val uid = _user.value?.id ?: return
+        viewModelScope.launch {
+            try {
+                SupabaseClient.saveUserData(
+                    userId = uid,
+                    likedSongs = songsToJson(_likedSongs.value),
+                    playlists = playlistsToJson(_playlists.value),
+                    albums = albumsToJson(_savedAlbums.value),
+                    recentlyPlayed = songsToJson(_recentlyPlayed.value)
+                )
+            } catch (_: Exception) { /* will retry on next change */ }
+        }
+    }
+
+    // ── JSON (de)serialization matching the web app's stored shape ──
+    private fun songToJson(s: Song) = JSONObject().apply {
+        put("id", s.id); put("title", s.title); put("artist", s.artist)
+        put("album", s.album ?: ""); put("thumbnail", s.thumbnail ?: "")
+        put("durationSec", s.durationSec); put("streamUrl", s.streamUrl ?: "")
+    }
+    private fun songsToJson(list: List<Song>) = JSONArray().apply { list.forEach { put(songToJson(it)) } }
+    private fun jsonToSong(o: JSONObject) = Song(
+        id = o.optString("id"), title = o.optString("title"), artist = o.optString("artist"),
+        album = o.optString("album").ifBlank { null }, thumbnail = o.optString("thumbnail").ifBlank { null },
+        durationSec = o.optInt("durationSec"), streamUrl = o.optString("streamUrl").ifBlank { null }
+    )
+    private fun parseSongsJson(arr: JSONArray?): List<Song> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::jsonToSong) }
+    }
+    private fun playlistsToJson(list: List<Playlist>) = JSONArray().apply {
+        list.forEach { pl -> put(JSONObject().apply {
+            put("id", pl.id); put("name", pl.name); put("songs", songsToJson(pl.songs))
+        }) }
+    }
+    private fun parsePlaylistsJson(arr: JSONArray?): List<Playlist> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.let { o ->
+                Playlist(o.optString("id"), o.optString("name"), parseSongsJson(o.optJSONArray("songs")).toMutableList())
+            }
+        }
+    }
+    private fun albumsToJson(list: List<SavedAlbum>) = JSONArray().apply {
+        list.forEach { a -> put(JSONObject().apply {
+            put("id", a.id); put("name", a.name); put("artist", a.artist)
+            put("thumbnail", a.thumbnail ?: ""); put("query", a.query)
+        }) }
+    }
+    private fun parseAlbumsJson(arr: JSONArray?): List<SavedAlbum> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.let { o ->
+                SavedAlbum(o.optString("id"), o.optString("name"), o.optString("artist"),
+                    o.optString("thumbnail").ifBlank { null }, o.optString("query"))
+            }
+        }
+    }
+}

@@ -49,14 +49,52 @@ object SupabaseClient {
         })
     }
 
-    suspend fun saveUserData(userId: String, json: JSONObject): Boolean = suspendCancellableCoroutine { cont ->
-        json.put("id", userId)
-        val body = json.toString().toRequestBody("application/json".toMediaType())
+    /**
+     * Matches the exact schema used by the web app's user_data table:
+     * liked_songs, playlists, albums, recently_played, queue — all JSON columns.
+     * Passing null for a field leaves that column untouched (partial update).
+     */
+    suspend fun saveUserData(
+        userId: String,
+        likedSongs: JSONArray? = null,
+        playlists: JSONArray? = null,
+        albums: JSONArray? = null,
+        recentlyPlayed: JSONArray? = null,
+        queue: JSONArray? = null
+    ): Boolean = suspendCancellableCoroutine { cont ->
+        val payload = JSONObject().put("id", userId)
+        likedSongs?.let { payload.put("liked_songs", it) }
+        playlists?.let { payload.put("playlists", it) }
+        albums?.let { payload.put("albums", it) }
+        recentlyPlayed?.let { payload.put("recently_played", it) }
+        queue?.let { payload.put("queue", it) }
+
+        val body = payload.toString().toRequestBody("application/json".toMediaType())
         val req = authHeader(
             Request.Builder()
                 .url("$SUPABASE_URL/rest/v1/user_data")
                 .addHeader("Prefer", "resolution=merge-duplicates")
                 .post(body)
+        ).build()
+        client.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resume(false)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                if (cont.isActive) cont.resume(response.isSuccessful)
+            }
+        })
+    }
+
+    suspend fun trackPlay(userId: String, song: Song): Boolean = suspendCancellableCoroutine { cont ->
+        val payload = JSONObject()
+            .put("user_id", userId)
+            .put("song_id", song.id)
+            .put("song_title", song.title)
+            .put("song_artist", song.artist)
+        val body = payload.toString().toRequestBody("application/json".toMediaType())
+        val req = authHeader(
+            Request.Builder().url("$SUPABASE_URL/rest/v1/play_history").post(body)
         ).build()
         client.newCall(req).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
