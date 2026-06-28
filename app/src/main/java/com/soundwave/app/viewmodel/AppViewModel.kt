@@ -16,8 +16,38 @@ enum class RepeatMode { OFF, ALL, ONE }
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Auth ──────────────────────────────────────────────────────────
-    private val _user = MutableStateFlow<UserProfile?>(null)
+    private val prefs = app.getSharedPreferences("soundwave_auth", Application.MODE_PRIVATE)
+
+    private val _user = MutableStateFlow<UserProfile?>(restoreUser())
     val user: StateFlow<UserProfile?> = _user.asStateFlow()
+
+    init {
+        // If a session was restored from disk, load their library immediately
+        _user.value?.let { loadUserData(it.id) }
+    }
+
+    private fun restoreUser(): UserProfile? {
+        val id = prefs.getString("user_id", null) ?: return null
+        return UserProfile(
+            id = id,
+            email = prefs.getString("user_email", null),
+            name = prefs.getString("user_name", null),
+            avatarUrl = prefs.getString("user_avatar", null)
+        )
+    }
+
+    private fun persistUser(profile: UserProfile?) {
+        prefs.edit().apply {
+            if (profile == null) {
+                clear()
+            } else {
+                putString("user_id", profile.id)
+                putString("user_email", profile.email)
+                putString("user_name", profile.name)
+                putString("user_avatar", profile.avatarUrl)
+            }
+        }.apply()
+    }
 
     // ── Library ───────────────────────────────────────────────────────
     private val _likedSongs = MutableStateFlow<List<Song>>(emptyList())
@@ -70,7 +100,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setUser(profile: UserProfile?) {
         _user.value = profile
+        persistUser(profile)
         if (profile != null) loadUserData(profile.id)
+    }
+
+    fun signOut() {
+        _user.value = null
+        persistUser(null)
+        _likedSongs.value = emptyList()
+        _playlists.value = emptyList()
+        _savedAlbums.value = emptyList()
+        _recentlyPlayed.value = emptyList()
     }
 
     fun isLiked(song: Song) = _likedSongs.value.any { it.id == song.id }
@@ -133,9 +173,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _queue.value = fromQueue
             _queueIndex.value = fromQueue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
         }
-        controllerBridge?.play(song)
         addToRecentlyPlayed(song)
         _user.value?.let { u -> viewModelScope.launch { SupabaseClient.trackPlay(u.id, song) } }
+
+        // JioSaavn's direct audio URLs are signed/time-limited and expire —
+        // a URL saved from search results days ago (e.g. from liked songs,
+        // playlists, or recently played) will likely be dead by now. Always
+        // refetch a fresh one by song ID right before actually playing,
+        // regardless of where the song object came from.
+        viewModelScope.launch {
+            val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) { null }
+            val playable = fresh?.takeIf { it.streamUrl != null } ?: song
+            controllerBridge?.play(playable)
+        }
     }
 
     fun togglePlayPause() {

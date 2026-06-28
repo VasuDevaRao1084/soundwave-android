@@ -24,12 +24,16 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
 import com.google.common.util.concurrent.MoreExecutors
 import com.soundwave.app.auth.GoogleAuth
+import com.soundwave.app.data.Playlist
+import com.soundwave.app.data.SavedAlbum
 import com.soundwave.app.data.Song
 import com.soundwave.app.ui.components.MiniPlayer
+import com.soundwave.app.ui.screens.AlbumDetailScreen
 import com.soundwave.app.ui.screens.HomeScreen
 import com.soundwave.app.ui.screens.LibraryScreen
 import com.soundwave.app.ui.screens.LoginScreen
 import com.soundwave.app.ui.screens.NowPlayingScreen
+import com.soundwave.app.ui.screens.PlaylistDetailScreen
 import com.soundwave.app.ui.screens.SearchScreen
 import com.soundwave.app.ui.theme.SoundWaveTheme
 import com.soundwave.app.ui.theme.SwSurfaceLight
@@ -157,6 +161,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var showNowPlaying by remember { mutableStateOf(false) }
     var isSigningIn by remember { mutableStateOf(false) }
+    var openPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var openAlbum by remember { mutableStateOf<SavedAlbum?>(null) }
 
     val likedIds = remember(likedSongs) { likedSongs.map { it.id }.toSet() }
 
@@ -176,22 +182,36 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.weight(1f)) {
-                when (tab) {
-                    Tab.HOME -> HomeScreen(
-                        user = user, recentlyPlayed = recentlyPlayed, currentSongId = currentSong?.id,
-                        likedIds = likedIds, onPlay = { vm.playSong(it, recentlyPlayed) }, onLike = { vm.toggleLike(it) }
+                val pl = openPlaylist
+                val al = openAlbum
+                when {
+                    pl != null -> PlaylistDetailScreen(
+                        playlist = pl, currentSongId = currentSong?.id, likedIds = likedIds,
+                        onBack = { openPlaylist = null },
+                        onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) }
                     )
-                    Tab.SEARCH -> SearchScreen(
-                        query = query, onQueryChange = { query = it }, results = searchResults,
-                        isSearching = isSearching, currentSongId = currentSong?.id, likedIds = likedIds,
-                        onPlay = { vm.playSong(it, searchResults) }, onLike = { vm.toggleLike(it) }
+                    al != null -> AlbumDetailScreen(
+                        album = al, currentSongId = currentSong?.id, likedIds = likedIds,
+                        onBack = { openAlbum = null },
+                        onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) }
                     )
-                    Tab.LIBRARY -> LibraryScreen(
-                        likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
-                        currentSongId = currentSong?.id, onPlay = { vm.playSong(it, likedSongs) },
-                        onLike = { vm.toggleLike(it) }, onOpenPlaylist = {}, onOpenAlbum = {},
-                        onCreatePlaylist = { vm.createPlaylist(it) }
-                    )
+                    else -> when (tab) {
+                        Tab.HOME -> HomeScreen(
+                            user = user, recentlyPlayed = recentlyPlayed, currentSongId = currentSong?.id,
+                            likedIds = likedIds, onPlay = { vm.playSong(it, recentlyPlayed) }, onLike = { vm.toggleLike(it) }
+                        )
+                        Tab.SEARCH -> SearchScreen(
+                            query = query, onQueryChange = { query = it }, results = searchResults,
+                            isSearching = isSearching, currentSongId = currentSong?.id, likedIds = likedIds,
+                            onPlay = { vm.playSong(it, searchResults) }, onLike = { vm.toggleLike(it) }
+                        )
+                        Tab.LIBRARY -> LibraryScreen(
+                            likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
+                            currentSongId = currentSong?.id, onPlay = { vm.playSong(it, likedSongs) },
+                            onLike = { vm.toggleLike(it) }, onOpenPlaylist = { openPlaylist = it }, onOpenAlbum = { openAlbum = it },
+                            onCreatePlaylist = { vm.createPlaylist(it) }
+                        )
+                    }
                 }
             }
             currentSong?.let { song ->
