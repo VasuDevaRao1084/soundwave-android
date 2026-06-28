@@ -13,9 +13,7 @@ import com.soundwave.app.data.UserProfile
  * the OAuth code exchanged the same way as the web flow).
  */
 object GoogleAuth {
-    // TODO: replace with the real Web Client ID from Google Cloud Console
-    // (Supabase Dashboard -> Authentication -> Providers -> Google shows this)
-    const val WEB_CLIENT_ID = "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
+    const val WEB_CLIENT_ID = "787669848369-jmbruiirgvt14sm487v0dsnfvhc2bgc0.apps.googleusercontent.com"
 
     fun client(context: Context): GoogleSignInClient {
         val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
