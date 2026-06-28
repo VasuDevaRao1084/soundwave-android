@@ -87,6 +87,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val duration: StateFlow<Float> = _duration.asStateFlow()
     private val _sleepTimerMins = MutableStateFlow<Int?>(null)
     val sleepTimerMins: StateFlow<Int?> = _sleepTimerMins.asStateFlow()
+    private val _playbackError = MutableStateFlow<String?>(null)
+    val playbackError: StateFlow<String?> = _playbackError.asStateFlow()
+    fun clearPlaybackError() { _playbackError.value = null }
 
     // Bridge to the real MediaController, set by MainActivity once connected
     var controllerBridge: ControllerBridge? = null
@@ -183,8 +186,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // regardless of where the song object came from.
         viewModelScope.launch {
             val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) { null }
-            val playable = fresh?.takeIf { it.streamUrl != null } ?: song
-            controllerBridge?.play(playable)
+            var playable = fresh?.takeIf { it.streamUrl != null }
+
+            // ID lookup can fail for songs saved before a source-API change,
+            // or IDs that don't exist on this instance. Fall back to
+            // re-searching by title + artist to find a playable match.
+            if (playable == null) {
+                playable = try {
+                    SaavnApi.search("${song.title} ${song.artist}")
+                        .firstOrNull { it.streamUrl != null }
+                } catch (e: Exception) { null }
+            }
+
+            if (playable?.streamUrl != null) {
+                controllerBridge?.play(playable)
+            } else {
+                _playbackError.value = "Couldn't find a playable version of \"${song.title}\""
+                _isPlaying.value = false
+            }
         }
     }
 

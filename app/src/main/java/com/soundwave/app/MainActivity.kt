@@ -156,6 +156,15 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val repeat by vm.repeat.collectAsState()
     val progress by vm.progress.collectAsState()
     val duration by vm.duration.collectAsState()
+    val playbackError by vm.playbackError.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(playbackError) {
+        playbackError?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.clearPlaybackError()
+        }
+    }
 
     var tab by remember { mutableStateOf(Tab.HOME) }
     var query by remember { mutableStateOf("") }
@@ -180,6 +189,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
         Column(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.weight(1f)) {
                 val pl = openPlaylist
