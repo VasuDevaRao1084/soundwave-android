@@ -19,13 +19,15 @@ data class Song(
 )
 
 /**
- * Client for the public, free, hosted JioSaavn API (saavn.dev).
+ * Client for the free, hosted JioSaavn API at saavn.sumit.co.
  * No API key needed. Based on the open-source sumitkolhe/jiosaavn-api project.
- * If saavn.dev ever goes down, this project is deployable to your own
- * Cloudflare Worker/Vercel instance as a drop-in replacement (same base URL shape).
+ * (saavn.dev — the more commonly referenced instance of this same project —
+ * was blocked on this device's network, so this alternate domain is used instead.)
+ * If this domain ever becomes unreachable too, this project is deployable to
+ * your own Cloudflare Worker/Vercel instance as a drop-in replacement.
  */
 object SaavnApi {
-    private const val BASE = "https://saavn.dev/api"
+    private const val BASE = "https://saavn.sumit.co/api"
     private val client = OkHttpClient()
 
     private suspend fun getJson(url: String): JSONObject = suspendCancellableCoroutine { cont ->
