@@ -210,9 +210,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 playable = try {
                     YoutubeApi.search("${song.title} ${song.artist}")
                         .firstOrNull()?.let { result ->
-                            // We have the video ID from search, now get its stream URL
-                            val streamUrl = YoutubeApi.getStreamUrl(result.id)
-                            if (streamUrl != null) result.copy(streamUrl = streamUrl) else null
+                            // getSongById fetches fresh metadata + stream URL in one call
+                            YoutubeApi.getSongById(result.id)?.takeIf { it.streamUrl != null }
                         }
                 } catch (e: Exception) { null }
             }
