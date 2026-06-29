@@ -1,5 +1,6 @@
 package com.soundwave.app.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,8 +9,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -17,9 +20,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.soundwave.app.data.Song
-import com.soundwave.app.ui.theme.SwSurfaceLight
+import com.soundwave.app.ui.theme.SwPink
+import com.soundwave.app.ui.theme.SwPurple
+import com.soundwave.app.ui.theme.SwSurface
 import com.soundwave.app.ui.theme.SwTextSecondary
 
 @Composable
@@ -31,54 +37,87 @@ fun SongRow(
     onLikeClick: (() -> Unit)? = null,
     onMoreClick: (() -> Unit)? = null
 ) {
+    val bgColor by animateColorAsState(
+        if (isPlaying) Color(0xFF1A1530) else Color.Transparent,
+        label = "row_bg"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Album art
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(SwSurfaceLight)
+                .clip(RoundedCornerShape(10.dp))
+                .background(SwSurface),
+            contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = song.thumbnail,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-            )
+            if (song.thumbnail != null) {
+                AsyncImage(
+                    model = song.thumbnail,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextSecondary, modifier = Modifier.size(24.dp))
+            }
+            // Playing indicator overlay
+            if (isPlaying) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(SwPurple.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+            }
         }
+
         Spacer(Modifier.width(12.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 song.title,
-                color = if (isPlaying) Color(0xFF8B5CF6) else Color.White,
-                fontWeight = FontWeight.Medium,
+                color = if (isPlaying) SwPurple else Color.White,
+                fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 15.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            Spacer(Modifier.height(2.dp))
             Text(
                 song.artist,
                 color = SwTextSecondary,
-                fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
+
         if (onLikeClick != null) {
-            IconButton(onClick = onLikeClick) {
+            IconButton(onClick = onLikeClick, modifier = Modifier.size(40.dp)) {
                 Icon(
                     if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = "Like",
-                    tint = if (isLiked) Color(0xFFF472B6) else SwTextSecondary
+                    tint = if (isLiked) SwPink else Color(0xFF4A4560),
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
         if (onMoreClick != null) {
-            IconButton(onClick = onMoreClick) {
-                Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = SwTextSecondary)
+            IconButton(onClick = onMoreClick, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = "More",
+                    tint = Color(0xFF4A4560),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }

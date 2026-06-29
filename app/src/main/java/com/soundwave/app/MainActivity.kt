@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
@@ -39,6 +40,8 @@ import com.soundwave.app.ui.screens.PlaylistDetailScreen
 import com.soundwave.app.ui.screens.SearchScreen
 import com.soundwave.app.ui.theme.SoundWaveTheme
 import com.soundwave.app.ui.theme.SwSurfaceLight
+import com.soundwave.app.ui.theme.SwPurple
+import androidx.compose.ui.graphics.Color
 import com.soundwave.app.viewmodel.AppViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -141,7 +144,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Tab { HOME, SEARCH, LIBRARY }
+private enum class Tab { HOME, SEARCH, LIBRARY, ALBUMS }
 
 @Composable
 private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
@@ -219,8 +222,19 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     )
                     else -> when (tab) {
                         Tab.HOME -> HomeScreen(
-                            user = user, recentlyPlayed = recentlyPlayed, currentSongId = currentSong?.id,
-                            likedIds = likedIds, onPlay = { vm.playSong(it, recentlyPlayed) }, onLike = { vm.toggleLike(it) }
+                            user = user, recentlyPlayed = recentlyPlayed,
+                            savedAlbums = savedAlbums,
+                            currentSongId = currentSong?.id,
+                            likedIds = likedIds,
+                            onPlay = { vm.playSong(it, recentlyPlayed) },
+                            onLike = { vm.toggleLike(it) },
+                            onSearchAlbums = { showAlbumSearch = true },
+                            onOpenAlbum = { openAlbum = it }
+                        )
+                        Tab.ALBUMS -> AlbumSearchScreen(
+                            savedAlbumIds = savedAlbums.map { it.id }.toSet(),
+                            onBack = { tab = Tab.HOME },
+                            onSaveAlbum = { vm.saveAlbum(it) }
                         )
                         Tab.SEARCH -> SearchScreen(
                             query = query, onQueryChange = { query = it }, results = searchResults,
@@ -242,26 +256,61 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                 }
             }
             currentSong?.let { song ->
-                Box(modifier = Modifier.padding(8.dp)) {
+                Box(modifier = Modifier.padding(start = 0.dp, end = 0.dp, bottom = 0.dp, top = 0.dp)) {
                     MiniPlayer(
-                        song = song, isPlaying = isPlaying,
-                        onTogglePlay = { vm.togglePlayPause() }, onNext = { vm.next() },
+                        song = song,
+                        isPlaying = isPlaying,
+                        isLiked = likedIds.contains(song.id),
+                        onTogglePlay = { vm.togglePlayPause() },
+                        onNext = { vm.next() },
+                        onLike = { vm.toggleLike(song) },
                         onClick = { showNowPlaying = true }
                     )
                 }
             }
-            NavigationBar(containerColor = SwSurfaceLight) {
+            NavigationBar(
+                containerColor = Color(0xFF0D0B18),
+                tonalElevation = 0.dp
+            ) {
                 NavigationBarItem(
                     selected = tab == Tab.HOME, onClick = { tab = Tab.HOME },
-                    icon = { Icon(Icons.Filled.Home, contentDescription = "Home") }, label = { Text("Home") }
+                    icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
+                    label = { Text("Home") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = SwPurple, selectedTextColor = SwPurple,
+                        unselectedIconColor = Color(0xFF4A4560), unselectedTextColor = Color(0xFF4A4560),
+                        indicatorColor = Color(0xFF1A1530)
+                    )
                 )
                 NavigationBarItem(
                     selected = tab == Tab.SEARCH, onClick = { tab = Tab.SEARCH },
-                    icon = { Icon(Icons.Filled.Search, contentDescription = "Search") }, label = { Text("Search") }
+                    icon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
+                    label = { Text("Search") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = SwPurple, selectedTextColor = SwPurple,
+                        unselectedIconColor = Color(0xFF4A4560), unselectedTextColor = Color(0xFF4A4560),
+                        indicatorColor = Color(0xFF1A1530)
+                    )
                 )
                 NavigationBarItem(
                     selected = tab == Tab.LIBRARY, onClick = { tab = Tab.LIBRARY },
-                    icon = { Icon(Icons.Filled.LibraryMusic, contentDescription = "Library") }, label = { Text("Library") }
+                    icon = { Icon(Icons.Filled.LibraryMusic, contentDescription = "Library") },
+                    label = { Text("Library") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = SwPurple, selectedTextColor = SwPurple,
+                        unselectedIconColor = Color(0xFF4A4560), unselectedTextColor = Color(0xFF4A4560),
+                        indicatorColor = Color(0xFF1A1530)
+                    )
+                )
+                NavigationBarItem(
+                    selected = tab == Tab.ALBUMS, onClick = { tab = Tab.ALBUMS },
+                    icon = { Icon(Icons.Filled.Album, contentDescription = "Albums") },
+                    label = { Text("Albums") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = SwPurple, selectedTextColor = SwPurple,
+                        unselectedIconColor = Color(0xFF4A4560), unselectedTextColor = Color(0xFF4A4560),
+                        indicatorColor = Color(0xFF1A1530)
+                    )
                 )
             }
         }
