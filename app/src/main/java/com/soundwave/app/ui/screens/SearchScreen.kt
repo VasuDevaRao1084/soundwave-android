@@ -27,7 +27,8 @@ fun SearchScreen(
     currentSongId: String?,
     likedIds: Set<String>,
     onPlay: (Song) -> Unit,
-    onLike: (Song) -> Unit
+    onLike: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SwBg)) {
         Spacer(Modifier.height(48.dp))
@@ -63,7 +64,8 @@ fun SearchScreen(
                         isPlaying = song.id == currentSongId,
                         isLiked = likedIds.contains(song.id),
                         onClick = { onPlay(song) },
-                        onLikeClick = { onLike(song) }
+                        onLikeClick = { onLike(song) },
+                        onMoreClick = { onAddToPlaylist(song) }
                     )
                 }
                 item { Spacer(Modifier.height(100.dp)) }

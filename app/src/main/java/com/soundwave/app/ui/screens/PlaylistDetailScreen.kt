@@ -26,7 +26,8 @@ fun PlaylistDetailScreen(
     likedIds: Set<String>,
     onBack: () -> Unit,
     onPlay: (Song, List<Song>) -> Unit,
-    onLike: (Song) -> Unit
+    onLike: (Song) -> Unit,
+    onRemoveSong: (Song) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SwBg)) {
         Spacer(Modifier.height(48.dp))
@@ -52,7 +53,8 @@ fun PlaylistDetailScreen(
                         isPlaying = song.id == currentSongId,
                         isLiked = likedIds.contains(song.id),
                         onClick = { onPlay(song, playlist.songs) },
-                        onLikeClick = { onLike(song) }
+                        onLikeClick = { onLike(song) },
+                        onMoreClick = { onRemoveSong(song) }
                     )
                 }
                 item { Spacer(Modifier.height(100.dp)) }

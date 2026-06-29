@@ -27,8 +27,10 @@ import com.soundwave.app.auth.GoogleAuth
 import com.soundwave.app.data.Playlist
 import com.soundwave.app.data.SavedAlbum
 import com.soundwave.app.data.Song
+import com.soundwave.app.ui.components.AddToPlaylistSheet
 import com.soundwave.app.ui.components.MiniPlayer
 import com.soundwave.app.ui.screens.AlbumDetailScreen
+import com.soundwave.app.ui.screens.AlbumSearchScreen
 import com.soundwave.app.ui.screens.HomeScreen
 import com.soundwave.app.ui.screens.LibraryScreen
 import com.soundwave.app.ui.screens.LoginScreen
@@ -174,6 +176,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var isSigningIn by remember { mutableStateOf(false) }
     var openPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var openAlbum by remember { mutableStateOf<SavedAlbum?>(null) }
+    var showAlbumSearch by remember { mutableStateOf(false) }
+    var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
 
     val likedIds = remember(likedSongs) { likedSongs.map { it.id }.toSet() }
 
@@ -200,12 +204,18 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     pl != null -> PlaylistDetailScreen(
                         playlist = pl, currentSongId = currentSong?.id, likedIds = likedIds,
                         onBack = { openPlaylist = null },
-                        onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) }
+                        onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) },
+                        onRemoveSong = { vm.removeFromPlaylist(pl.id, it.id) }
                     )
                     al != null -> AlbumDetailScreen(
                         album = al, currentSongId = currentSong?.id, likedIds = likedIds,
                         onBack = { openAlbum = null },
                         onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) }
+                    )
+                    showAlbumSearch -> AlbumSearchScreen(
+                        savedAlbumIds = savedAlbums.map { it.id }.toSet(),
+                        onBack = { showAlbumSearch = false },
+                        onSaveAlbum = { vm.saveAlbum(it); showAlbumSearch = false }
                     )
                     else -> when (tab) {
                         Tab.HOME -> HomeScreen(
@@ -215,14 +225,18 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         Tab.SEARCH -> SearchScreen(
                             query = query, onQueryChange = { query = it }, results = searchResults,
                             isSearching = isSearching, currentSongId = currentSong?.id, likedIds = likedIds,
-                            onPlay = { vm.playSong(it, searchResults) }, onLike = { vm.toggleLike(it) }
+                            onPlay = { vm.playSong(it, searchResults) }, onLike = { vm.toggleLike(it) },
+                            onAddToPlaylist = { addToPlaylistSong = it }
                         )
                         Tab.LIBRARY -> LibraryScreen(
                             likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
                             downloadedSongs = vm.listDownloadedSongs(),
                             currentSongId = currentSong?.id, onPlay = { vm.playSong(it, likedSongs) },
                             onLike = { vm.toggleLike(it) }, onOpenPlaylist = { openPlaylist = it }, onOpenAlbum = { openAlbum = it },
-                            onCreatePlaylist = { vm.createPlaylist(it) }
+                            onCreatePlaylist = { vm.createPlaylist(it) },
+                            onDeletePlaylist = { vm.deletePlaylist(it.id) },
+                            onRemoveAlbum = { vm.removeAlbum(it.id) },
+                            onSearchAlbums = { showAlbumSearch = true }
                         )
                     }
                 }
@@ -264,6 +278,15 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                 onToggleShuffle = { vm.toggleShuffle() }, onCycleRepeat = { vm.cycleRepeat() },
                 onToggleDownload = { vm.toggleDownload(currentSong!!) },
                 onSetSleepTimer = { vm.setSleepTimer(it) }
+            )
+        }
+
+        addToPlaylistSong?.let { song ->
+            AddToPlaylistSheet(
+                playlists = playlists,
+                onDismiss = { addToPlaylistSong = null },
+                onPick = { vm.addToPlaylist(it.id, song); addToPlaylistSong = null },
+                onCreateNew = { name -> vm.createPlaylist(name); addToPlaylistSong = null }
             )
         }
     }

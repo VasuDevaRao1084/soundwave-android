@@ -39,7 +39,10 @@ fun LibraryScreen(
     onLike: (Song) -> Unit,
     onOpenPlaylist: (Playlist) -> Unit,
     onOpenAlbum: (SavedAlbum) -> Unit,
-    onCreatePlaylist: (String) -> Unit
+    onCreatePlaylist: (String) -> Unit,
+    onDeletePlaylist: (Playlist) -> Unit,
+    onRemoveAlbum: (SavedAlbum) -> Unit,
+    onSearchAlbums: () -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -68,13 +71,16 @@ fun LibraryScreen(
             1 -> Column {
                 TextButton(onClick = { showCreateDialog = true }) { Text("+ New Playlist") }
                 if (playlists.isEmpty()) EmptyState("No playlists yet") else LazyColumn {
-                    items(playlists) { pl -> PlaylistRow(pl, onClick = { onOpenPlaylist(pl) }) }
+                    items(playlists) { pl -> PlaylistRow(pl, onClick = { onOpenPlaylist(pl) }, onDelete = { onDeletePlaylist(pl) }) }
                     item { Spacer(Modifier.height(100.dp)) }
                 }
             }
-            2 -> if (savedAlbums.isEmpty()) EmptyState("No saved albums yet") else LazyColumn {
-                items(savedAlbums) { album -> AlbumRow(album, onClick = { onOpenAlbum(album) }) }
-                item { Spacer(Modifier.height(100.dp)) }
+            2 -> Column {
+                TextButton(onClick = onSearchAlbums) { Text("+ Find an album") }
+                if (savedAlbums.isEmpty()) EmptyState("No saved albums yet") else LazyColumn {
+                    items(savedAlbums) { album -> AlbumRow(album, onClick = { onOpenAlbum(album) }, onDelete = { onRemoveAlbum(album) }) }
+                    item { Spacer(Modifier.height(100.dp)) }
+                }
             }
             3 -> if (downloadedSongs.isEmpty()) EmptyState("No downloaded songs yet") else LazyColumn {
                 items(downloadedSongs) { song ->
@@ -107,7 +113,7 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun PlaylistRow(playlist: Playlist, onClick: () -> Unit) {
+private fun PlaylistRow(playlist: Playlist, onClick: () -> Unit, onDelete: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -116,15 +122,18 @@ private fun PlaylistRow(playlist: Playlist, onClick: () -> Unit) {
             Icon(Icons.Filled.QueueMusic, contentDescription = null, tint = Color.White)
         }
         Spacer(Modifier.width(12.dp))
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(playlist.name, color = Color.White, fontWeight = FontWeight.Medium)
             Text("${playlist.songs.size} songs", color = Color.Gray, fontSize = 13.sp)
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Filled.Delete, contentDescription = "Delete playlist", tint = Color.Gray)
         }
     }
 }
 
 @Composable
-private fun AlbumRow(album: SavedAlbum, onClick: () -> Unit) {
+private fun AlbumRow(album: SavedAlbum, onClick: () -> Unit, onDelete: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -135,9 +144,12 @@ private fun AlbumRow(album: SavedAlbum, onClick: () -> Unit) {
             modifier = Modifier.size(48.dp).background(SwSurfaceLight, RoundedCornerShape(8.dp))
         )
         Spacer(Modifier.width(12.dp))
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(album.name, color = Color.White, fontWeight = FontWeight.Medium)
             Text(album.artist, color = Color.Gray, fontSize = 13.sp)
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Filled.Delete, contentDescription = "Remove album", tint = Color.Gray)
         }
     }
 }

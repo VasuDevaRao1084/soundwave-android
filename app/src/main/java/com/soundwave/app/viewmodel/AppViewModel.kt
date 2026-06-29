@@ -144,6 +144,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         syncToCloud()
     }
 
+    fun removeFromPlaylist(playlistId: String, songId: String) {
+        _playlists.value = _playlists.value.map {
+            if (it.id == playlistId) {
+                Playlist(it.id, it.name, it.songs.filterNot { s -> s.id == songId }.toMutableList())
+            } else it
+        }
+        syncToCloud()
+    }
+
     fun deletePlaylist(playlistId: String) {
         _playlists.value = _playlists.value.filterNot { it.id == playlistId }
         syncToCloud()
@@ -311,19 +320,57 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ── Cloud sync ────────────────────────────────────────────────────
+    private val libraryPrefs = appContext.getSharedPreferences("soundwave_library", Application.MODE_PRIVATE)
+
     private fun loadUserData(userId: String) {
+        // Load from local disk FIRST — this is the source of truth for what
+        // the user sees immediately, works fully offline, and can never be
+        // wiped by a flaky/empty network response.
+        restoreLibraryFromDisk()
+
         viewModelScope.launch {
             try {
                 val data = SupabaseClient.getUserData(userId) ?: return@launch
-                _likedSongs.value = parseSongsJson(data.optJSONArray("liked_songs"))
-                _recentlyPlayed.value = parseSongsJson(data.optJSONArray("recently_played"))
-                _playlists.value = parsePlaylistsJson(data.optJSONArray("playlists"))
-                _savedAlbums.value = parseAlbumsJson(data.optJSONArray("albums"))
-            } catch (_: Exception) { /* offline or first run, ignore */ }
+                // Only adopt cloud data for a field if the cloud actually has
+                // something in it. A successful-but-empty cloud response must
+                // never erase non-empty local data — that was the data-loss bug.
+                data.optJSONArray("liked_songs")?.takeIf { it.length() > 0 }?.let {
+                    _likedSongs.value = parseSongsJson(it)
+                }
+                data.optJSONArray("recently_played")?.takeIf { it.length() > 0 }?.let {
+                    _recentlyPlayed.value = parseSongsJson(it)
+                }
+                data.optJSONArray("playlists")?.takeIf { it.length() > 0 }?.let {
+                    _playlists.value = parsePlaylistsJson(it)
+                }
+                data.optJSONArray("albums")?.takeIf { it.length() > 0 }?.let {
+                    _savedAlbums.value = parseAlbumsJson(it)
+                }
+                persistLibraryToDisk()
+            } catch (_: Exception) { /* offline — local data from disk already loaded above, nothing to lose */ }
         }
     }
 
+    private fun persistLibraryToDisk() {
+        libraryPrefs.edit()
+            .putString("liked_songs", songsToJson(_likedSongs.value).toString())
+            .putString("recently_played", songsToJson(_recentlyPlayed.value).toString())
+            .putString("playlists", playlistsToJson(_playlists.value).toString())
+            .putString("albums", albumsToJson(_savedAlbums.value).toString())
+            .apply()
+    }
+
+    private fun restoreLibraryFromDisk() {
+        try {
+            libraryPrefs.getString("liked_songs", null)?.let { _likedSongs.value = parseSongsJson(JSONArray(it)) }
+            libraryPrefs.getString("recently_played", null)?.let { _recentlyPlayed.value = parseSongsJson(JSONArray(it)) }
+            libraryPrefs.getString("playlists", null)?.let { _playlists.value = parsePlaylistsJson(JSONArray(it)) }
+            libraryPrefs.getString("albums", null)?.let { _savedAlbums.value = parseAlbumsJson(JSONArray(it)) }
+        } catch (_: Exception) { /* corrupted/missing local cache, start fresh */ }
+    }
+
     private fun syncToCloud() {
+        persistLibraryToDisk() // always save locally first, regardless of network
         val uid = _user.value?.id ?: return
         viewModelScope.launch {
             try {
@@ -334,7 +381,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     albums = albumsToJson(_savedAlbums.value),
                     recentlyPlayed = songsToJson(_recentlyPlayed.value)
                 )
-            } catch (_: Exception) { /* will retry on next change */ }
+            } catch (_: Exception) { /* will retry on next change; local copy is already safe */ }
         }
     }
 
