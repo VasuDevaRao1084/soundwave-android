@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.soundwave.app.data.SaavnApi
+import com.soundwave.app.data.YoutubeApi
 import com.soundwave.app.data.SavedAlbum
 import com.soundwave.app.ui.theme.SwBg
 import com.soundwave.app.ui.theme.SwSurfaceLight
@@ -36,14 +36,14 @@ fun AlbumSearchScreen(
     onSaveAlbum: (SavedAlbum) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<SaavnApi.AlbumResult>>(emptyList()) }
+    var results by remember { mutableStateOf<List<YoutubeApi.AlbumResult>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
 
     LaunchedEffect(query) {
         delay(400)
         if (query.isBlank()) { results = emptyList(); return@LaunchedEffect }
         loading = true
-        results = try { SaavnApi.searchAlbums(query) } catch (e: Exception) { emptyList() }
+        results = try { YoutubeApi.searchAlbums(query) } catch (e: Exception) { emptyList() }
         loading = false
     }
 

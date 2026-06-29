@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.soundwave.app.data.*
+import com.soundwave.app.data.YoutubeApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -175,7 +176,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _isSearching.value = true
         viewModelScope.launch {
             try {
-                _searchResults.value = SaavnApi.search(query)
+                _searchResults.value = YoutubeApi.search(query)
             } catch (e: Exception) {
                 _searchResults.value = emptyList()
             } finally {
@@ -200,16 +201,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // refetch a fresh one by song ID right before actually playing,
         // regardless of where the song object came from.
         viewModelScope.launch {
-            val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) { null }
+            val fresh = try { YoutubeApi.getSongById(song.id) } catch (e: Exception) { null }
             var playable = fresh?.takeIf { it.streamUrl != null }
 
-            // ID lookup can fail for songs saved before a source-API change,
-            // or IDs that don't exist on this instance. Fall back to
-            // re-searching by title + artist to find a playable match.
+            // ID lookup can fail if the video was removed or ID changed.
+            // Fall back to re-searching by title + artist to find a playable match.
             if (playable == null) {
                 playable = try {
-                    SaavnApi.search("${song.title} ${song.artist}")
-                        .firstOrNull { it.streamUrl != null }
+                    YoutubeApi.search("${song.title} ${song.artist}")
+                        .firstOrNull()?.let { result ->
+                            // We have the video ID from search, now get its stream URL
+                            val streamUrl = YoutubeApi.getStreamUrl(result.id)
+                            if (streamUrl != null) result.copy(streamUrl = streamUrl) else null
+                        }
                 } catch (e: Exception) { null }
             }
 
