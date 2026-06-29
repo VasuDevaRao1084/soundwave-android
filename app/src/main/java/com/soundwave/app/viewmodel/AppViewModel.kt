@@ -15,8 +15,10 @@ enum class RepeatMode { OFF, ALL, ONE }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
+    private val appContext: Application = app
+
     // ── Auth ──────────────────────────────────────────────────────────
-    private val prefs = app.getSharedPreferences("soundwave_auth", Application.MODE_PRIVATE)
+    private val prefs = appContext.getSharedPreferences("soundwave_auth", Application.MODE_PRIVATE)
 
     private val _user = MutableStateFlow<UserProfile?>(restoreUser())
     val user: StateFlow<UserProfile?> = _user.asStateFlow()
@@ -280,7 +282,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Downloads (metadata-only cache for offline browsing, no audio files
     //    are actually saved — matches the web app's existing behavior) ──────
-    private val downloadsPrefs = app.getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
+    private val downloadsPrefs = appContext.getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
 
     private fun restoreDownloads(): Set<String> =
         getApplication<Application>().getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
@@ -293,7 +295,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _downloadedIds.value = if (cur.contains(song.id)) cur - song.id else cur + song.id
         downloadsPrefs.edit().putStringSet("ids", _downloadedIds.value).apply()
         // Cache the song's metadata so it can be browsed offline, same as web app
-        val metaPrefs = app.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
+        val metaPrefs = appContext.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
         if (_downloadedIds.value.contains(song.id)) {
             metaPrefs.edit().putString(song.id, songToJson(song).toString()).apply()
         } else {
@@ -302,9 +304,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun listDownloadedSongs(): List<Song> {
-        val metaPrefs = app.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
+        val metaPrefs = appContext.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
         return _downloadedIds.value.mapNotNull { id ->
-            metaPrefs.getString(id, null)?.let { try { jsonToSong(JSONObject(it)) } catch (e: Exception) { null } }
+            metaPrefs.getString(id, null)?.let { jsonStr -> try { jsonToSong(JSONObject(jsonStr)) } catch (e: Exception) { null } }
         }
     }
 

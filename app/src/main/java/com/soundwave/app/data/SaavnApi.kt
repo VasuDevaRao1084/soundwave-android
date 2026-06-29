@@ -51,7 +51,38 @@ object SaavnApi {
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
         val json = getJson("$BASE/search/songs?query=$encoded&limit=25")
         val results = json.optJSONObject("data")?.optJSONArray("results") ?: JSONArray()
-        return parseSongs(results)
+        return rankResults(parseSongs(results), query)
+    }
+
+    // Cover/remix/tribute albums tend to use these words in the album or
+    // artist name. Real original tracks almost never do. Used to push
+    // imitation versions down the list instead of removing them entirely
+    // (some people do want the cover/instrumental version).
+    private val coverIndicators = listOf(
+        "tribute", "instrumental", "karaoke", "cover", "remix", "guitar cover",
+        "piano cover", "8d", "slowed", "reverb", "lofi", "lo-fi", "acoustic version",
+        "made famous by", "in the style of", "originally performed"
+    )
+
+    private fun rankResults(songs: List<Song>, query: String): List<Song> {
+        val queryLower = query.trim().lowercase()
+        return songs.sortedWith(
+            compareByDescending<Song> { song ->
+                val titleLower = song.title.lowercase()
+                val albumLower = song.album?.lowercase() ?: ""
+                var score = 0
+                if (titleLower == queryLower) score += 100          // exact title match
+                else if (titleLower.startsWith(queryLower)) score += 50
+                else if (titleLower.contains(queryLower)) score += 20
+
+                val looksLikeCover = coverIndicators.any { indicator ->
+                    albumLower.contains(indicator) || song.artist.lowercase().contains(indicator)
+                }
+                if (looksLikeCover) score -= 80
+
+                score
+            }
+        )
     }
 
     suspend fun getSongById(id: String): Song? {
