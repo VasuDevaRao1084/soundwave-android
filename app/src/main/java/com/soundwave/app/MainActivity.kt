@@ -157,6 +157,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val progress by vm.progress.collectAsState()
     val duration by vm.duration.collectAsState()
     val playbackError by vm.playbackError.collectAsState()
+    val downloadedIds by vm.downloadedIds.collectAsState()
+    val sleepTimerMins by vm.sleepTimerMins.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(playbackError) {
@@ -217,6 +219,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         )
                         Tab.LIBRARY -> LibraryScreen(
                             likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
+                            downloadedSongs = vm.listDownloadedSongs(),
                             currentSongId = currentSong?.id, onPlay = { vm.playSong(it, likedSongs) },
                             onLike = { vm.toggleLike(it) }, onOpenPlaylist = { openPlaylist = it }, onOpenAlbum = { openAlbum = it },
                             onCreatePlaylist = { vm.createPlaylist(it) }
@@ -252,11 +255,15 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
         if (showNowPlaying && currentSong != null) {
             NowPlayingScreen(
                 song = currentSong!!, isPlaying = isPlaying, isLiked = likedIds.contains(currentSong!!.id),
+                isDownloaded = downloadedIds.contains(currentSong!!.id),
                 progress = progress, duration = duration, shuffle = shuffle, repeat = repeat,
+                sleepTimerMins = sleepTimerMins,
                 onClose = { showNowPlaying = false }, onTogglePlay = { vm.togglePlayPause() },
                 onNext = { vm.next() }, onPrevious = { vm.previous() },
                 onSeek = { vm.seekTo(it) }, onLike = { vm.toggleLike(currentSong!!) },
-                onToggleShuffle = { vm.toggleShuffle() }, onCycleRepeat = { vm.cycleRepeat() }
+                onToggleShuffle = { vm.toggleShuffle() }, onCycleRepeat = { vm.cycleRepeat() },
+                onToggleDownload = { vm.toggleDownload(currentSong!!) },
+                onSetSleepTimer = { vm.setSleepTimer(it) }
             )
         }
     }

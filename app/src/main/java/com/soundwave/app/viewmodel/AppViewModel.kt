@@ -87,6 +87,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val duration: StateFlow<Float> = _duration.asStateFlow()
     private val _sleepTimerMins = MutableStateFlow<Int?>(null)
     val sleepTimerMins: StateFlow<Int?> = _sleepTimerMins.asStateFlow()
+    private var sleepTimerJob: kotlinx.coroutines.Job? = null
+
+    private val _downloadedIds = MutableStateFlow<Set<String>>(restoreDownloads())
+    val downloadedIds: StateFlow<Set<String>> = _downloadedIds.asStateFlow()
     private val _playbackError = MutableStateFlow<String?>(null)
     val playbackError: StateFlow<String?> = _playbackError.asStateFlow()
     fun clearPlaybackError() { _playbackError.value = null }
@@ -262,7 +266,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         syncToCloud()
     }
 
-    fun setSleepTimer(mins: Int?) { _sleepTimerMins.value = mins }
+    fun setSleepTimer(mins: Int?) {
+        sleepTimerJob?.cancel()
+        _sleepTimerMins.value = mins
+        if (mins == null) return
+        sleepTimerJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(mins * 60_000L)
+            _isPlaying.value = false
+            controllerBridge?.pause()
+            _sleepTimerMins.value = null
+        }
+    }
+
+    // ── Downloads (metadata-only cache for offline browsing, no audio files
+    //    are actually saved — matches the web app's existing behavior) ──────
+    private val downloadsPrefs = app.getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
+
+    private fun restoreDownloads(): Set<String> =
+        getApplication<Application>().getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
+            .getStringSet("ids", emptySet()) ?: emptySet()
+
+    fun isDownloaded(song: Song) = _downloadedIds.value.contains(song.id)
+
+    fun toggleDownload(song: Song) {
+        val cur = _downloadedIds.value
+        _downloadedIds.value = if (cur.contains(song.id)) cur - song.id else cur + song.id
+        downloadsPrefs.edit().putStringSet("ids", _downloadedIds.value).apply()
+        // Cache the song's metadata so it can be browsed offline, same as web app
+        val metaPrefs = app.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
+        if (_downloadedIds.value.contains(song.id)) {
+            metaPrefs.edit().putString(song.id, songToJson(song).toString()).apply()
+        } else {
+            metaPrefs.edit().remove(song.id).apply()
+        }
+    }
+
+    fun listDownloadedSongs(): List<Song> {
+        val metaPrefs = app.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
+        return _downloadedIds.value.mapNotNull { id ->
+            metaPrefs.getString(id, null)?.let { try { jsonToSong(JSONObject(it)) } catch (e: Exception) { null } }
+        }
+    }
 
     // ── Cloud sync ────────────────────────────────────────────────────
     private fun loadUserData(userId: String) {

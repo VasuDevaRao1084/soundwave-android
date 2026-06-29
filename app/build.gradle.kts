@@ -79,6 +79,7 @@ dependencies {
 
     // Image loading for album art
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
 
     // Google Sign-In
     implementation("com.google.android.gms:play-services-auth:21.2.0")
