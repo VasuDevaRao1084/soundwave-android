@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.soundwave.app.data.*
-import com.soundwave.app.data.YoutubeApi
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -176,7 +176,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _isSearching.value = true
         viewModelScope.launch {
             try {
-                _searchResults.value = YoutubeApi.search(query)
+                _searchResults.value = SaavnApi.search(query)
             } catch (e: Exception) {
                 _searchResults.value = emptyList()
             } finally {
@@ -201,18 +201,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // refetch a fresh one by song ID right before actually playing,
         // regardless of where the song object came from.
         viewModelScope.launch {
-            val fresh = try { YoutubeApi.getSongById(song.id) } catch (e: Exception) { null }
+            val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) { null }
             var playable = fresh?.takeIf { it.streamUrl != null }
 
             // ID lookup can fail if the video was removed or ID changed.
             // Fall back to re-searching by title + artist to find a playable match.
             if (playable == null) {
                 playable = try {
-                    YoutubeApi.search("${song.title} ${song.artist}")
-                        .firstOrNull()?.let { result ->
-                            // getSongById fetches fresh metadata + stream URL in one call
-                            YoutubeApi.getSongById(result.id)?.takeIf { it.streamUrl != null }
-                        }
+                    SaavnApi.search("${song.title} ${song.artist}")
+                        .firstOrNull { it.streamUrl != null }
                 } catch (e: Exception) { null }
             }
 

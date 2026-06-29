@@ -19,7 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.soundwave.app.data.YoutubeApi
+import com.soundwave.app.data.SaavnApi
 import com.soundwave.app.data.SavedAlbum
 import com.soundwave.app.data.Song
 import com.soundwave.app.ui.components.SongRow
@@ -39,7 +39,7 @@ fun AlbumDetailScreen(
 
     LaunchedEffect(album.id) {
         loading = true
-        songs = try { YoutubeApi.getAlbumSongs(album.id) } catch (e: Exception) { emptyList() }
+        songs = try { SaavnApi.getAlbumSongs(album.id) } catch (e: Exception) { emptyList() }
         loading = false
     }
 
