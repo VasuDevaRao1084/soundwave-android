@@ -237,6 +237,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             android.util.Log.d("SoundWavePlayback", "FINAL playable streamUrl=${playable?.streamUrl}")
 
             if (playable?.streamUrl != null) {
+                _currentSong.value = playable
                 controllerBridge?.play(playable)
             } else {
                 _playbackError.value = "Couldn't find a playable version of \"${song.title}\""

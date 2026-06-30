@@ -24,6 +24,7 @@ data class Song(
 
 object SaavnApi {
     private const val BASE = "https://saavn.sumit.co/api"
+    private const val JIOSAAVN_DIRECT_BASE = "https://www.jiosaavn.com/api.php"
     private const val YTM_BASE = "https://music.youtube.com/youtubei/v1"
     private const val YT_BASE = "https://www.youtube.com/youtubei/v1"
     private const val YT_KEY = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-KOAS-EXPU"
@@ -83,14 +84,18 @@ object SaavnApi {
         val songs = rankResults(parseSongsWithLanguage(results), query)
 
         // If all results are instrumentals/covers with no proper English songs,
-        // fall back to YouTube Music for this query
+        // try JioSaavn's own website search directly (different backend/index
+        // than the wrapper API, sometimes surfaces tracks the wrapper misses)
+        // before falling back to YouTube Music.
         val hasGoodResult = songs.any { it.language == "english" && !it.looksLikeCover }
-        return if (!hasGoodResult && songs.all { it.language == "instrumental" || it.looksLikeCover }) {
+        if (!hasGoodResult && songs.all { it.language == "instrumental" || it.looksLikeCover }) {
+            val directSongs = try { searchJioSaavnDirect(query) } catch (e: Exception) { emptyList() }
+            if (directSongs.isNotEmpty()) return directSongs
+
             val ytSongs = searchYoutube(query)
-            if (ytSongs.isNotEmpty()) ytSongs else songs.map { it.song }
-        } else {
-            songs.map { it.song }
+            return if (ytSongs.isNotEmpty()) ytSongs else songs.map { it.song }
         }
+        return songs.map { it.song }
     }
 
     private data class RankedSong(val song: Song, val language: String, val looksLikeCover: Boolean)
@@ -170,6 +175,11 @@ object SaavnApi {
         if (id.startsWith("yt_")) {
             return getYoutubeSongById(id.removePrefix("yt_"))
         }
+        // JioSaavn Direct songs use "direct_" prefix — re-fetch via direct API
+        // (stream URLs are short-lived, always refetch fresh before playing)
+        if (id.startsWith("direct_")) {
+            return getJioSaavnDirectSongById(id.removePrefix("direct_"))
+        }
         val json = getJson("$BASE/songs/$id")
         val results = json.optJSONArray("data") ?: return null
         return parseSongs(results).firstOrNull()
@@ -205,6 +215,70 @@ object SaavnApi {
     // ── YouTube Music fallback ─────────────────────────────────────────────────
     // Used ONLY when JioSaavn returns zero proper results (all instrumentals/covers).
     // Uses YouTube's own InnerTube API — no third-party servers.
+
+    // ── JioSaavn Direct (official website backend) ───────────────────────────
+    // Used as a second fallback before YouTube. Hits JioSaavn's own website
+    // autocomplete API directly (different index than the saavn.sumit.co
+    // wrapper), which sometimes surfaces tracks the wrapper's /search/songs
+    // endpoint misses entirely — confirmed via the official JioSaavn Android
+    // app, which uses this exact same backend and DES decryption scheme.
+
+    private suspend fun searchJioSaavnDirect(query: String): List<Song> {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val url = "$JIOSAAVN_DIRECT_BASE?__call=autocomplete.get&_format=json&_marker=0&cc=in&includeMetaTags=1&query=$encoded"
+        val json = getJson(url)
+        val songResults = json.optJSONObject("songs")?.optJSONArray("data") ?: JSONArray()
+
+        val songs = mutableListOf<Song>()
+        for (i in 0 until songResults.length()) {
+            val basic = songResults.optJSONObject(i) ?: continue
+            val songId = basic.optString("id").takeIf { it.isNotBlank() } ?: continue
+            // Autocomplete only returns basic info — fetch full details
+            // (including encrypted_media_url) for each match
+            val full = try { getJioSaavnDirectSongById(songId) } catch (e: Exception) { null }
+            if (full != null) songs.add(full)
+        }
+        return songs
+    }
+
+    private suspend fun getJioSaavnDirectSongById(songId: String): Song? {
+        val url = "$JIOSAAVN_DIRECT_BASE?__call=song.getDetails&cc=in&_marker=0&_format=json&pids=$songId"
+        val json = getJson(url)
+        val data = json.optJSONObject(songId) ?: return null
+
+        val title = htmlDecode(data.optString("song", ""))
+        val artist = htmlDecode(data.optString("primary_artists", data.optString("singers", "Unknown Artist")))
+        val album = htmlDecode(data.optString("album", ""))
+        val image = data.optString("image", "").replace("150x150", "500x500")
+        val durationSec = data.optString("duration", "0").toIntOrNull() ?: 0
+
+        val encryptedUrl = data.optString("encrypted_media_url", "").takeIf { it.isNotBlank() } ?: return null
+        var streamUrl = try { decryptJioSaavnUrl(encryptedUrl) } catch (e: Exception) { null } ?: return null
+
+        // Use 320kbps if available, otherwise the decrypted URL's default quality
+        if (data.optString("320kbps") != "true") {
+            streamUrl = streamUrl.replace("_320.mp4", "_160.mp4")
+        }
+
+        return Song("direct_$songId", title, artist, album.ifBlank { null }, image, durationSec, streamUrl, "jiosaavn_direct")
+    }
+
+    /**
+     * Decrypts JioSaavn's encrypted_media_url field.
+     * Algorithm: DES/ECB/PKCS5Padding with the fixed key "38346591"
+     * (well-documented, used by every JioSaavn reverse-engineering project
+     * including the official app's own DRM-free media URL scheme).
+     */
+    private fun decryptJioSaavnUrl(encryptedUrl: String): String {
+        val keyBytes = "38346591".toByteArray(Charsets.UTF_8)
+        val keySpec = javax.crypto.spec.SecretKeySpec(keyBytes, "DES")
+        val cipher = javax.crypto.Cipher.getInstance("DES/ECB/PKCS5Padding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec)
+        val encryptedBytes = android.util.Base64.decode(encryptedUrl.trim(), android.util.Base64.DEFAULT)
+        val decryptedBytes = cipher.doFinal(encryptedBytes)
+        return String(decryptedBytes, Charsets.UTF_8)
+    }
+
 
     private fun ytMusicContext() = JSONObject().apply {
         put("context", JSONObject().apply {
