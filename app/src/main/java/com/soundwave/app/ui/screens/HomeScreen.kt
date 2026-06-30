@@ -254,7 +254,6 @@ private fun RecentSongCard(
 }
 
 @Composable
-@Composable
 private fun RecommendationCard(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
     Column(
         modifier = Modifier
