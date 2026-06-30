@@ -201,7 +201,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // refetch a fresh one by song ID right before actually playing,
         // regardless of where the song object came from.
         viewModelScope.launch {
-            val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) { null }
+            android.util.Log.d("SoundWavePlayback", "playSong: id=${song.id} source=${song.source} title=${song.title}")
+
+            val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) {
+                android.util.Log.e("SoundWavePlayback", "getSongById threw", e); null
+            }
+            android.util.Log.d("SoundWavePlayback", "getSongById result: streamUrl=${fresh?.streamUrl}")
             var playable = fresh?.takeIf { it.streamUrl != null }
 
             if (playable == null) {
@@ -209,20 +214,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // For JioSaavn songs: re-search on JioSaavn
                 playable = try {
                     val results = SaavnApi.search("${song.title} ${song.artist}")
+                    android.util.Log.d("SoundWavePlayback", "fallback search returned ${results.size} results, sources=${results.map { it.source }}")
                     // Find the right source match first, then any playable result
                     results.firstOrNull { it.source == song.source && it.streamUrl != null }
                         ?: results.firstOrNull { it.streamUrl != null }
-                } catch (e: Exception) { null }
+                } catch (e: Exception) {
+                    android.util.Log.e("SoundWavePlayback", "fallback search threw", e); null
+                }
 
                 // If still null and it's a YouTube song, try fetching stream directly by re-searching
                 if (playable == null && song.id.startsWith("yt_")) {
                     playable = try {
                         val ytResults = SaavnApi.search("${song.title} ${song.artist}")
                         val ytSong = ytResults.firstOrNull { it.source == "youtube" }
+                        android.util.Log.d("SoundWavePlayback", "yt re-search found id=${ytSong?.id}")
                         ytSong?.let { SaavnApi.getSongById(it.id) }?.takeIf { it.streamUrl != null }
-                    } catch (e: Exception) { null }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SoundWavePlayback", "yt fallback threw", e); null
+                    }
                 }
             }
+            android.util.Log.d("SoundWavePlayback", "FINAL playable streamUrl=${playable?.streamUrl}")
 
             if (playable?.streamUrl != null) {
                 controllerBridge?.play(playable)

@@ -198,10 +198,10 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val downloadedIds by vm.downloadedIds.collectAsState()
     val sleepTimerMins by vm.sleepTimerMins.collectAsState()
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(playbackError) {
         playbackError?.let {
-            snackbarHostState.showSnackbar(it)
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
             vm.clearPlaybackError()
         }
     }
@@ -231,7 +231,6 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
         Column(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.weight(1f)) {
                 val pl = openPlaylist
