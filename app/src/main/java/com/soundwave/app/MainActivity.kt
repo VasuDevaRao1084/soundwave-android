@@ -74,7 +74,12 @@ class MainActivity : ComponentActivity() {
 
         vm.controllerBridge = object : AppViewModel.ControllerBridge {
             override fun play(song: Song) {
-                val url = song.streamUrl ?: return
+                val url = song.streamUrl
+                android.util.Log.d("SoundWavePlayback", "play() called — id=${song.id} url=$url")
+                if (url == null) {
+                    android.widget.Toast.makeText(this@MainActivity, "No stream URL for this song", android.widget.Toast.LENGTH_LONG).show()
+                    return
+                }
                 val mediaItem = MediaItem.Builder()
                     .setUri(url)
                     .setMediaMetadata(
@@ -112,10 +117,26 @@ class MainActivity : ComponentActivity() {
             mediaController = controllerFuture.get()
             mediaController?.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
+                    val stateName = when (state) {
+                        androidx.media3.common.Player.STATE_IDLE -> "IDLE"
+                        androidx.media3.common.Player.STATE_BUFFERING -> "BUFFERING"
+                        androidx.media3.common.Player.STATE_READY -> "READY"
+                        androidx.media3.common.Player.STATE_ENDED -> "ENDED"
+                        else -> "UNKNOWN"
+                    }
+                    android.util.Log.d("SoundWavePlayback", "State changed: $stateName")
                     if (state == androidx.media3.common.Player.STATE_ENDED) vm.onTrackEnded()
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    android.util.Log.d("SoundWavePlayback", "isPlaying changed: $isPlaying")
                     vm.syncPlayingState(isPlaying)
+                }
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    // This is the key diagnostic — shows the EXACT reason playback failed
+                    // (403 Forbidden, 404 Not Found, unsupported format, network timeout, etc.)
+                    val msg = "Playback error: ${error.errorCodeName} — ${error.message}"
+                    android.util.Log.e("SoundWavePlayback", msg, error)
+                    android.widget.Toast.makeText(this@MainActivity, msg, android.widget.Toast.LENGTH_LONG).show()
                 }
             })
             startProgressPolling()
