@@ -40,6 +40,7 @@ fun HomeScreen(
     user: UserProfile?,
     recentlyPlayed: List<Song>,
     savedAlbums: List<SavedAlbum>,
+    recommendedSongs: List<Song>,
     currentSongId: String?,
     likedIds: Set<String>,
     onPlay: (Song) -> Unit,
@@ -92,6 +93,41 @@ fun HomeScreen(
                             // Fill empty slot if odd number
                             if (row.size == 1) Spacer(Modifier.weight(1f).padding(4.dp))
                         }
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
+            }
+        }
+
+        // ── Made For You (smart recommendations) ───────────────────────────────
+        if (recommendedSongs.isNotEmpty()) {
+            item {
+                Text(
+                    "Made For You",
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+                Text(
+                    "Based on your recent listening",
+                    color = Color(0xFF6B6080),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    recommendedSongs.forEach { song ->
+                        RecommendationCard(
+                            song = song,
+                            isPlaying = song.id == currentSongId,
+                            onClick = { onPlay(song) }
+                        )
                     }
                 }
                 Spacer(Modifier.height(28.dp))
@@ -213,6 +249,51 @@ private fun RecentSongCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+@Composable
+private fun RecommendationCard(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(140.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(140.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (isPlaying) SwPurple.copy(alpha = 0.25f) else Color(0xFF1A1730)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (song.thumbnail != null) {
+                AsyncImage(
+                    model = song.thumbnail,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF4A4560), modifier = Modifier.size(36.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            song.title,
+            color = if (isPlaying) SwPurple else Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            song.artist,
+            color = Color(0xFF6B6080),
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

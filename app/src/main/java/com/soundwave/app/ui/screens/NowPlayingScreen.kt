@@ -60,7 +60,8 @@ fun NowPlayingScreen(
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
     onToggleDownload: () -> Unit,
-    onSetSleepTimer: (Int?) -> Unit
+    onSetSleepTimer: (Int?) -> Unit,
+    onShowQueue: () -> Unit
 ) {
     val context = LocalContext.current
     var primaryColor by remember(song.id) { mutableStateOf(SwPurple) }
@@ -128,7 +129,7 @@ fun NowPlayingScreen(
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 2.sp
                 )
-                IconButton(onClick = { /* queue */ }) {
+                IconButton(onClick = onShowQueue) {
                     Icon(Icons.Filled.QueueMusic, contentDescription = "Queue",
                         tint = Color(0xFF6B6080), modifier = Modifier.size(22.dp))
                 }

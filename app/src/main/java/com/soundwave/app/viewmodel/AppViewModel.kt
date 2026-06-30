@@ -65,6 +65,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _recentlyPlayed = MutableStateFlow<List<Song>>(emptyList())
     val recentlyPlayed: StateFlow<List<Song>> = _recentlyPlayed.asStateFlow()
 
+    // ── Smart Recommendations ────────────────────────────────────────
+    // Lightweight on-device recommendation engine: tracks which artists
+    // the user plays most, then surfaces more songs from those artists
+    // plus searches for "similar artist" style queries. No ML model —
+    // just frequency-weighted artist affinity, refreshed as they listen.
+    private val _recommendedSongs = MutableStateFlow<List<Song>>(emptyList())
+    val recommendedSongs: StateFlow<List<Song>> = _recommendedSongs.asStateFlow()
+    private val artistPlayCounts = mutableMapOf<String, Int>()
+    private var lastRecommendationRefresh = 0L
+
     // ── Search ────────────────────────────────────────────────────────
     private val _searchResults = MutableStateFlow<List<Song>>(emptyList())
     val searchResults: StateFlow<List<Song>> = _searchResults.asStateFlow()
@@ -102,10 +112,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var controllerBridge: ControllerBridge? = null
     interface ControllerBridge {
         fun play(song: Song)
+        fun playQueue(songs: List<Song>, startIndex: Int)
         fun togglePlayPause()
         fun seekTo(seconds: Float)
         fun pause()
         fun resume()
+        fun skipToNext()
+        fun skipToPrevious()
     }
 
     fun setUser(profile: UserProfile?) {
@@ -188,61 +201,57 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun playSong(song: Song, fromQueue: List<Song>? = null) {
         _currentSong.value = song
         _isPlaying.value = true
-        if (fromQueue != null) {
-            _queue.value = fromQueue
-            _queueIndex.value = fromQueue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        }
+        val queueToUse = fromQueue ?: _queue.value.ifEmpty { listOf(song) }
+        _queue.value = queueToUse
+        val startIndex = queueToUse.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+        _queueIndex.value = startIndex
+
         addToRecentlyPlayed(song)
         _user.value?.let { u -> viewModelScope.launch { SupabaseClient.trackPlay(u.id, song) } }
+        updateSmartRecommendations(song)
 
-        // JioSaavn's direct audio URLs are signed/time-limited and expire —
-        // a URL saved from search results days ago (e.g. from liked songs,
-        // playlists, or recently played) will likely be dead by now. Always
-        // refetch a fresh one by song ID right before actually playing,
-        // regardless of where the song object came from.
-        viewModelScope.launch {
-            android.util.Log.d("SoundWavePlayback", "playSong: id=${song.id} source=${song.source} title=${song.title}")
-
-            val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) {
-                android.util.Log.e("SoundWavePlayback", "getSongById threw", e); null
-            }
-            android.util.Log.d("SoundWavePlayback", "getSongById result: streamUrl=${fresh?.streamUrl}")
+        // Resolve a fresh, playable stream URL for a single song (used for
+        // both the starting song and lazily for queue neighbors).
+        suspend fun resolvePlayable(s: Song): Song? {
+            val fresh = try { SaavnApi.getSongById(s.id) } catch (e: Exception) { null }
             var playable = fresh?.takeIf { it.streamUrl != null }
-
             if (playable == null) {
-                // For YouTube songs: re-search on YouTube and get a fresh stream URL
-                // For JioSaavn songs: re-search on JioSaavn
                 playable = try {
-                    val results = SaavnApi.search("${song.title} ${song.artist}")
-                    android.util.Log.d("SoundWavePlayback", "fallback search returned ${results.size} results, sources=${results.map { it.source }}")
-                    // Find the right source match first, then any playable result
-                    results.firstOrNull { it.source == song.source && it.streamUrl != null }
+                    val results = SaavnApi.search("${s.title} ${s.artist}")
+                    results.firstOrNull { it.source == s.source && it.streamUrl != null }
                         ?: results.firstOrNull { it.streamUrl != null }
-                } catch (e: Exception) {
-                    android.util.Log.e("SoundWavePlayback", "fallback search threw", e); null
-                }
-
-                // If still null and it's a YouTube song, try fetching stream directly by re-searching
-                if (playable == null && song.id.startsWith("yt_")) {
-                    playable = try {
-                        val ytResults = SaavnApi.search("${song.title} ${song.artist}")
-                        val ytSong = ytResults.firstOrNull { it.source == "youtube" }
-                        android.util.Log.d("SoundWavePlayback", "yt re-search found id=${ytSong?.id}")
-                        ytSong?.let { SaavnApi.getSongById(it.id) }?.takeIf { it.streamUrl != null }
-                    } catch (e: Exception) {
-                        android.util.Log.e("SoundWavePlayback", "yt fallback threw", e); null
-                    }
-                }
+                } catch (e: Exception) { null }
             }
-            android.util.Log.d("SoundWavePlayback", "FINAL playable streamUrl=${playable?.streamUrl}")
+            return playable
+        }
 
-            if (playable?.streamUrl != null) {
-                _currentSong.value = playable
-                controllerBridge?.play(playable)
-            } else {
+        viewModelScope.launch {
+            val playableStart = resolvePlayable(song)
+            if (playableStart?.streamUrl == null) {
                 _playbackError.value = "Couldn't find a playable version of \"${song.title}\""
                 _isPlaying.value = false
+                return@launch
             }
+            _currentSong.value = playableStart
+
+            // Resolve stream URLs for the rest of the queue (a window around
+            // the current song) so ExoPlayer has a real multi-item playlist —
+            // this is what makes the system widget's Next/Previous buttons work,
+            // since Android calls ExoPlayer's native seekToNext/Previous directly,
+            // bypassing our app's UI entirely.
+            val windowSize = 10
+            val from = (startIndex - windowSize).coerceAtLeast(0)
+            val to = (startIndex + windowSize).coerceAtMost(queueToUse.size - 1)
+            val windowSongs = queueToUse.subList(from, to + 1).toMutableList()
+            val relativeStartIndex = startIndex - from
+            windowSongs[relativeStartIndex] = playableStart
+
+            val resolvedWindow = windowSongs.mapIndexed { idx, s ->
+                if (idx == relativeStartIndex) s
+                else (resolvePlayable(s) ?: s) // best-effort; unplayable ones get skipped by ExoPlayer's error handling
+            }
+
+            controllerBridge?.playQueue(resolvedWindow, relativeStartIndex)
         }
     }
 
@@ -260,19 +269,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun next() {
         val q = _queue.value
         if (q.isEmpty()) return
-        val nextIdx = if (_shuffle.value) q.indices.random() else (_queueIndex.value + 1)
-        if (nextIdx >= q.size) {
-            if (_repeat.value == RepeatMode.ALL) playSong(q[0], q) else { _isPlaying.value = false }
+        if (_shuffle.value) {
+            val nextIdx = q.indices.random()
+            playSong(q[nextIdx], q)
             return
         }
-        playSong(q[nextIdx], q)
+        // Native skip — keeps ExoPlayer's internal queue position in sync,
+        // which is what the system widget/notification buttons rely on too
+        controllerBridge?.skipToNext()
     }
 
     fun previous() {
         val q = _queue.value
         if (q.isEmpty()) return
-        val prevIdx = (_queueIndex.value - 1).coerceAtLeast(0)
-        playSong(q[prevIdx], q)
+        controllerBridge?.skipToPrevious()
+    }
+
+    /** Called by MainActivity when ExoPlayer's current queue position changes
+     * (from native skip, widget buttons, or auto-advance) — keeps app state in sync. */
+    fun syncQueuePosition(song: Song) {
+        _currentSong.value = song
+        _queueIndex.value = _queue.value.indexOfFirst { it.id == song.id }.coerceAtLeast(_queueIndex.value)
+        addToRecentlyPlayed(song)
+        updateSmartRecommendations(song)
     }
 
     fun toggleShuffle() { _shuffle.value = !_shuffle.value }
@@ -287,11 +306,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun updateProgress(cur: Float, dur: Float) { _progress.value = cur; _duration.value = dur }
     fun seekTo(seconds: Float) { controllerBridge?.seekTo(seconds) }
 
+    /** Called only when ExoPlayer's entire internal queue finishes playing
+     * (STATE_ENDED) — mid-queue transitions are now handled natively by
+     * ExoPlayer itself via setMediaItems(), with syncQueuePosition() keeping
+     * app state in sync. This only handles repeat behavior at the true end. */
     fun onTrackEnded() {
         when (_repeat.value) {
             RepeatMode.ONE -> controllerBridge?.let { _currentSong.value?.let(it::play) }
-            RepeatMode.ALL -> next()
-            RepeatMode.OFF -> if (_queueIndex.value < _queue.value.size - 1) next() else _isPlaying.value = false
+            RepeatMode.ALL -> {
+                val q = _queue.value
+                if (q.isNotEmpty()) playSong(q[0], q)
+            }
+            RepeatMode.OFF -> _isPlaying.value = false
         }
     }
 
@@ -299,6 +325,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val cur = _recentlyPlayed.value.filterNot { it.id == song.id }
         _recentlyPlayed.value = (listOf(song) + cur).take(20)
         syncToCloud()
+    }
+
+    /**
+     * Updates artist play-frequency tracking and refreshes recommendations.
+     * Strategy: every play increments that artist's count. When the top
+     * artist changes or it's been a while, re-search JioSaavn for that
+     * artist's other songs (excluding ones already in recently played)
+     * to surface a "More like this" style list — similar to Spotify's
+     * "Made For You" but using simple, transparent frequency weighting
+     * instead of an opaque ML model, which is appropriate for an on-device
+     * app with no server-side user data warehouse.
+     */
+    private fun updateSmartRecommendations(song: Song) {
+        artistPlayCounts[song.artist] = (artistPlayCounts[song.artist] ?: 0) + 1
+
+        val now = System.currentTimeMillis()
+        // Refresh at most every 60 seconds to avoid hammering the API on rapid skips
+        if (now - lastRecommendationRefresh < 60_000) return
+        lastRecommendationRefresh = now
+
+        val topArtists = artistPlayCounts.entries.sortedByDescending { it.value }.take(3).map { it.key }
+        if (topArtists.isEmpty()) return
+
+        viewModelScope.launch {
+            val alreadyPlayedIds = _recentlyPlayed.value.map { it.id }.toSet()
+            val recommendations = mutableListOf<Song>()
+            for (artist in topArtists) {
+                try {
+                    val results = SaavnApi.search(artist)
+                    recommendations.addAll(
+                        results.filter { it.id !in alreadyPlayedIds && it.streamUrl != null }.take(5)
+                    )
+                } catch (e: Exception) { /* skip this artist on failure, try the rest */ }
+            }
+            _recommendedSongs.value = recommendations.distinctBy { it.id }.shuffled().take(15)
+        }
     }
 
     fun setSleepTimer(mins: Int?) {

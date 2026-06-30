@@ -74,23 +74,33 @@ class MainActivity : ComponentActivity() {
 
         vm.controllerBridge = object : AppViewModel.ControllerBridge {
             override fun play(song: Song) {
-                val url = song.streamUrl
-                android.util.Log.d("SoundWavePlayback", "play() called — id=${song.id} url=$url")
-                if (url == null) {
+                playQueue(listOf(song), 0)
+            }
+            override fun playQueue(songs: List<Song>, startIndex: Int) {
+                val mediaItems = songs.mapNotNull { s ->
+                    val url = s.streamUrl ?: return@mapNotNull null
+                    MediaItem.Builder()
+                        .setUri(url)
+                        .setMediaId(s.id)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(s.title)
+                                .setArtist(s.artist)
+                                .setArtworkUri(s.thumbnail?.let { android.net.Uri.parse(it) })
+                                .build()
+                        )
+                        .build()
+                }
+                if (mediaItems.isEmpty()) {
                     android.widget.Toast.makeText(this@MainActivity, "No stream URL for this song", android.widget.Toast.LENGTH_LONG).show()
                     return
                 }
-                val mediaItem = MediaItem.Builder()
-                    .setUri(url)
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(song.title)
-                            .setArtist(song.artist)
-                            .setArtworkUri(song.thumbnail?.let { android.net.Uri.parse(it) })
-                            .build()
-                    )
-                    .build()
-                mediaController?.setMediaItem(mediaItem)
+                val safeStartIndex = startIndex.coerceIn(0, mediaItems.size - 1)
+                // setMediaItems (plural) gives ExoPlayer a real multi-song playlist,
+                // so native seekToNext/seekToPrevious work — this is what makes
+                // the system notification/lock-screen widget's skip buttons functional,
+                // since Android calls those ExoPlayer methods directly.
+                mediaController?.setMediaItems(mediaItems, safeStartIndex, 0L)
                 mediaController?.prepare()
                 mediaController?.play()
             }
@@ -101,6 +111,18 @@ class MainActivity : ComponentActivity() {
             override fun pause() { mediaController?.pause() }
             override fun resume() { mediaController?.play() }
             override fun seekTo(seconds: Float) { mediaController?.seekTo((seconds * 1000).toLong()) }
+            override fun skipToNext() { mediaController?.takeIf { it.hasNextMediaItem() }?.seekToNext() }
+            override fun skipToPrevious() {
+                val c = mediaController ?: return
+                // If more than 3 seconds into the song, restart it (standard
+                // music player behavior — matches Spotify/Apple Music), otherwise
+                // go to the actual previous track.
+                if (c.currentPosition > 3000 || !c.hasPreviousMediaItem()) {
+                    c.seekTo(0)
+                } else {
+                    c.seekToPrevious()
+                }
+            }
         }
 
         setContent {
@@ -125,11 +147,28 @@ class MainActivity : ComponentActivity() {
                         else -> "UNKNOWN"
                     }
                     android.util.Log.d("SoundWavePlayback", "State changed: $stateName")
+                    // ExoPlayer auto-advances through setMediaItems() queue on its own.
+                    // STATE_ENDED now means the entire queue finished (no more items),
+                    // not a single-song end — repeat/queue-extension logic lives in onTrackEnded.
                     if (state == androidx.media3.common.Player.STATE_ENDED) vm.onTrackEnded()
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     android.util.Log.d("SoundWavePlayback", "isPlaying changed: $isPlaying")
                     vm.syncPlayingState(isPlaying)
+                }
+                override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                    // Fires whenever ExoPlayer moves to a different song in its queue —
+                    // whether from our own app's Next/Previous, the system widget's
+                    // skip buttons, headset controls, or natural auto-advance at the
+                    // end of a track. Keeps the app's currentSong state truthful
+                    // no matter which path triggered the change.
+                    val mediaId = mediaItem?.mediaId ?: return
+                    val queue = vm.queue.value
+                    val matched = queue.firstOrNull { it.id == mediaId }
+                        ?: vm.currentSong.value?.takeIf { it.id == mediaId }
+                    if (matched != null) {
+                        vm.syncQueuePosition(matched)
+                    }
                 }
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     // This is the key diagnostic — shows the EXACT reason playback failed
@@ -184,6 +223,9 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val user by vm.user.collectAsState()
     val currentSong by vm.currentSong.collectAsState()
     val isPlaying by vm.isPlaying.collectAsState()
+    val queue by vm.queue.collectAsState()
+    val queueIndex by vm.queueIndex.collectAsState()
+    val recommendedSongs by vm.recommendedSongs.collectAsState()
     val likedSongs by vm.likedSongs.collectAsState()
     val playlists by vm.playlists.collectAsState()
     val savedAlbums by vm.savedAlbums.collectAsState()
@@ -209,6 +251,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var tab by remember { mutableStateOf(Tab.HOME) }
     var query by remember { mutableStateOf("") }
     var showNowPlaying by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     var isSigningIn by remember { mutableStateOf(false) }
     var openPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var openAlbum by remember { mutableStateOf<SavedAlbum?>(null) }
@@ -256,6 +299,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         Tab.HOME -> HomeScreen(
                             user = user, recentlyPlayed = recentlyPlayed,
                             savedAlbums = savedAlbums,
+                            recommendedSongs = recommendedSongs,
                             currentSongId = currentSong?.id,
                             likedIds = likedIds,
                             onPlay = { vm.playSong(it, recentlyPlayed) },
@@ -358,7 +402,18 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                 onSeek = { vm.seekTo(it) }, onLike = { vm.toggleLike(currentSong!!) },
                 onToggleShuffle = { vm.toggleShuffle() }, onCycleRepeat = { vm.cycleRepeat() },
                 onToggleDownload = { vm.toggleDownload(currentSong!!) },
-                onSetSleepTimer = { vm.setSleepTimer(it) }
+                onSetSleepTimer = { vm.setSleepTimer(it) },
+                onShowQueue = { showQueue = true }
+            )
+        }
+
+        if (showQueue) {
+            com.soundwave.app.ui.components.QueueSheet(
+                queue = queue,
+                currentSongId = currentSong?.id,
+                queueIndex = queueIndex,
+                onDismiss = { showQueue = false },
+                onPlaySong = { vm.playSong(it, queue) }
             )
         }
 
