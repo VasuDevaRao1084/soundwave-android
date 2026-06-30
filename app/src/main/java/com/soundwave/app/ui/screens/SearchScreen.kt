@@ -29,6 +29,7 @@ fun SearchScreen(
     results: List<Song>,
     isSearching: Boolean,
     currentSongId: String?,
+    isAudioPlaying: Boolean,
     likedIds: Set<String>,
     onPlay: (Song) -> Unit,
     onLike: (Song) -> Unit,
@@ -123,6 +124,7 @@ fun SearchScreen(
                         SongRow(
                             song = song,
                             isPlaying = song.id == currentSongId,
+                            isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying,
                             isLiked = likedIds.contains(song.id),
                             onClick = { onPlay(song) },
                             onLikeClick = { onLike(song) },

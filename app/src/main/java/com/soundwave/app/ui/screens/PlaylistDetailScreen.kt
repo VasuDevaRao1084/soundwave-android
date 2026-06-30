@@ -23,6 +23,7 @@ import com.soundwave.app.ui.theme.SwBg
 fun PlaylistDetailScreen(
     playlist: Playlist,
     currentSongId: String?,
+    isAudioPlaying: Boolean,
     likedIds: Set<String>,
     onBack: () -> Unit,
     onPlay: (Song, List<Song>) -> Unit,
@@ -51,6 +52,7 @@ fun PlaylistDetailScreen(
                     SongRow(
                         song = song,
                         isPlaying = song.id == currentSongId,
+                        isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying,
                         isLiked = likedIds.contains(song.id),
                         onClick = { onPlay(song, playlist.songs) },
                         onLikeClick = { onLike(song) },

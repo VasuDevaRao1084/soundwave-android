@@ -280,13 +280,13 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                 val al = openAlbum
                 when {
                     pl != null -> PlaylistDetailScreen(
-                        playlist = pl, currentSongId = currentSong?.id, likedIds = likedIds,
+                        playlist = pl, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
                         onBack = { openPlaylist = null },
                         onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) },
                         onRemoveSong = { vm.removeFromPlaylist(pl.id, it.id) }
                     )
                     al != null -> AlbumDetailScreen(
-                        album = al, currentSongId = currentSong?.id, likedIds = likedIds,
+                        album = al, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
                         onBack = { openAlbum = null },
                         onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) }
                     )
@@ -314,14 +314,14 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         )
                         Tab.SEARCH -> SearchScreen(
                             query = query, onQueryChange = { query = it }, results = searchResults,
-                            isSearching = isSearching, currentSongId = currentSong?.id, likedIds = likedIds,
+                            isSearching = isSearching, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
                             onPlay = { vm.playSong(it, searchResults) }, onLike = { vm.toggleLike(it) },
                             onAddToPlaylist = { addToPlaylistSong = it }
                         )
                         Tab.LIBRARY -> LibraryScreen(
                             likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
                             downloadedSongs = vm.listDownloadedSongs(),
-                            currentSongId = currentSong?.id, onPlay = { vm.playSong(it, likedSongs) },
+                            currentSongId = currentSong?.id, isAudioPlaying = isPlaying, onPlay = { vm.playSong(it, likedSongs) },
                             onLike = { vm.toggleLike(it) }, onOpenPlaylist = { openPlaylist = it }, onOpenAlbum = { openAlbum = it },
                             onCreatePlaylist = { vm.createPlaylist(it) },
                             onDeletePlaylist = { vm.deletePlaylist(it.id) },

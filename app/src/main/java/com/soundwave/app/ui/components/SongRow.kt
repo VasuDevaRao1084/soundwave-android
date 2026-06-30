@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -27,18 +28,20 @@ import com.soundwave.app.ui.theme.SwPink
 import com.soundwave.app.ui.theme.SwPurple
 import com.soundwave.app.ui.theme.SwSurface
 import com.soundwave.app.ui.theme.SwTextSecondary
+import com.soundwave.app.ui.theme.SwTextTertiary
 
 @Composable
 fun SongRow(
     song: Song,
     isPlaying: Boolean = false,
+    isCurrentlyPlaying: Boolean = false, // distinct from isPlaying: this song is loaded AND audio is actively playing (vs paused)
     isLiked: Boolean = false,
     onClick: () -> Unit,
     onLikeClick: (() -> Unit)? = null,
     onMoreClick: (() -> Unit)? = null
 ) {
     val bgColor by animateColorAsState(
-        if (isPlaying) Color(0xFF1A1530) else Color.Transparent,
+        if (isPlaying) Color(0xFF211C38) else Color.Transparent,
         label = "row_bg"
     )
 
@@ -51,7 +54,6 @@ fun SongRow(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Album art
         Box(
             modifier = Modifier
                 .size(52.dp)
@@ -63,18 +65,21 @@ fun SongRow(
                 AsyncImage(
                     model = song.thumbnail,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
             } else {
                 Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextSecondary, modifier = Modifier.size(24.dp))
             }
-            // Playing indicator overlay
+            // Signature waveform indicator instead of a generic overlay icon —
+            // shows on the currently loaded track, animating only while audio
+            // is actually playing (vs. paused, where bars sit lower/static)
             if (isPlaying) {
                 Box(
-                    modifier = Modifier.fillMaxSize().background(SwPurple.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    PlayingWaveform(isPlaying = isCurrentlyPlaying, color = Color.White)
                 }
             }
         }
@@ -105,7 +110,7 @@ fun SongRow(
                 Icon(
                     if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = "Like",
-                    tint = if (isLiked) SwPink else Color(0xFF4A4560),
+                    tint = if (isLiked) SwPink else SwTextTertiary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -115,7 +120,7 @@ fun SongRow(
                 Icon(
                     Icons.Filled.MoreVert,
                     contentDescription = "More",
-                    tint = Color(0xFF4A4560),
+                    tint = SwTextTertiary,
                     modifier = Modifier.size(20.dp)
                 )
             }

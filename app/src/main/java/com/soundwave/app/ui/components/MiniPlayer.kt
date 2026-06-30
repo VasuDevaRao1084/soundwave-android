@@ -26,6 +26,8 @@ import coil.compose.AsyncImage
 import com.soundwave.app.data.Song
 import com.soundwave.app.ui.theme.SwPink
 import com.soundwave.app.ui.theme.SwPurple
+import com.soundwave.app.ui.theme.SwSurface
+import com.soundwave.app.ui.theme.SwTextTertiary
 
 @Composable
 fun MiniPlayer(
@@ -37,22 +39,22 @@ fun MiniPlayer(
     onLike: () -> Unit,
     onClick: () -> Unit
 ) {
-    // Solid opaque background — FIX for click-through issue
+    // Solid opaque background — prevents touches from passing through to
+    // content underneath, which was a real bug in an earlier build
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(16.dp, RoundedCornerShape(0.dp))
-            .background(Color(0xFF100E1A))
+            .shadow(16.dp)
+            .background(Color(0xFF100E16))
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Album art
         Box(
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF1A1730))
+                .background(SwSurface)
         ) {
             AsyncImage(
                 model = song.thumbnail,
@@ -64,7 +66,6 @@ fun MiniPlayer(
 
         Spacer(Modifier.width(12.dp))
 
-        // Title + artist
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 song.title,
@@ -77,28 +78,31 @@ fun MiniPlayer(
             Spacer(Modifier.height(2.dp))
             Text(
                 song.artist,
-                color = Color(0xFF6B6080),
+                color = Color(0xFF6B6478),
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
 
-        // Heart
-        IconButton(onClick = onLike, modifier = Modifier.size(40.dp)) {
+        // Signature waveform — replaces a generic "now playing" dot/icon
+        PlayingWaveform(isPlaying = isPlaying, color = SwPurple, barWidth = 2.5.dp, maxHeight = 14.dp)
+
+        Spacer(Modifier.width(12.dp))
+
+        IconButton(onClick = onLike, modifier = Modifier.size(36.dp)) {
             Icon(
                 if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                 contentDescription = "Like",
-                tint = if (isLiked) SwPink else Color(0xFF4A4560),
-                modifier = Modifier.size(22.dp)
+                tint = if (isLiked) SwPink else SwTextTertiary,
+                modifier = Modifier.size(20.dp)
             )
         }
 
-        // Play/Pause — big purple circle like web app
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(22.dp))
+                .size(42.dp)
+                .clip(RoundedCornerShape(21.dp))
                 .background(SwPurple)
                 .clickable(onClick = onTogglePlay),
             contentAlignment = Alignment.Center
@@ -107,18 +111,17 @@ fun MiniPlayer(
                 if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = "Play/Pause",
                 tint = Color.White,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
 
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
 
-        // Next
-        IconButton(onClick = onNext, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
             Icon(
                 Icons.Filled.SkipNext,
                 contentDescription = "Next",
-                tint = Color(0xFF4A4560),
+                tint = SwTextTertiary,
                 modifier = Modifier.size(22.dp)
             )
         }
