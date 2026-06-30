@@ -219,9 +219,15 @@ object SaavnApi {
     private fun ytAndroidContext() = JSONObject().apply {
         put("context", JSONObject().apply {
             put("client", JSONObject().apply {
-                put("clientName", "ANDROID")
-                put("clientVersion", "19.29.37")
-                put("androidSdkVersion", 30)
+                // IOS client returns plain unencrypted stream URLs in adaptiveFormats.
+                // ANDROID client sometimes returns signatureCipher (encrypted) URLs
+                // which we can't decrypt without a JS engine. IOS never does this.
+                put("clientName", "IOS")
+                put("clientVersion", "19.29.1")
+                put("deviceMake", "Apple")
+                put("deviceModel", "iPhone16,2")
+                put("osName", "iPhone")
+                put("osVersion", "17.5.1.21F90")
                 put("hl", "en")
                 put("gl", "IN")
             })
@@ -307,6 +313,11 @@ object SaavnApi {
         return try {
             val body = ytAndroidContext().apply { put("videoId", videoId) }
             val json = postJson("$YT_BASE/player?key=$YT_KEY", body)
+
+            // Check playability first
+            val status = json.optJSONObject("playabilityStatus")?.optString("status")
+            if (status == "ERROR" || status == "LOGIN_REQUIRED" || status == "UNPLAYABLE") return null
+
             val videoDetails = json.optJSONObject("videoDetails")
             val title = videoDetails?.optString("title") ?: ""
             val author = videoDetails?.optString("author") ?: "Unknown Artist"
@@ -314,18 +325,41 @@ object SaavnApi {
             val thumbnails = videoDetails?.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
             val thumbnail = thumbnails?.let { it.optJSONObject(it.length()-1)?.optString("url") }
 
-            val formats = json.optJSONObject("streamingData")?.optJSONArray("adaptiveFormats")
+            val streamingData = json.optJSONObject("streamingData")
+
+            // IOS client returns plain URLs in adaptiveFormats (audio-only, best quality)
+            // Also check regular formats as fallback (contain both audio+video but still playable)
+            val adaptiveFormats = streamingData?.optJSONArray("adaptiveFormats")
+            val regularFormats = streamingData?.optJSONArray("formats")
+
             var bestUrl: String? = null
             var bestBitrate = -1
-            if (formats != null) {
-                for (i in 0 until formats.length()) {
-                    val fmt = formats.optJSONObject(i) ?: continue
-                    if (!fmt.optString("mimeType","").startsWith("audio/")) continue
+
+            // Prefer adaptive audio-only streams
+            if (adaptiveFormats != null) {
+                for (i in 0 until adaptiveFormats.length()) {
+                    val fmt = adaptiveFormats.optJSONObject(i) ?: continue
+                    val mimeType = fmt.optString("mimeType", "")
+                    if (!mimeType.startsWith("audio/")) continue
+                    // Skip if URL is missing (signatureCipher = encrypted, can't use)
+                    val url = fmt.optString("url", "").takeIf { it.isNotBlank() } ?: continue
                     val bitrate = fmt.optInt("bitrate", 0)
-                    val url = fmt.optString("url","").takeIf { it.isNotBlank() } ?: continue
                     if (bitrate > bestBitrate) { bestBitrate = bitrate; bestUrl = url }
                 }
             }
+
+            // Fallback: regular formats (audio+video stream, ExoPlayer handles this fine)
+            if (bestUrl == null && regularFormats != null) {
+                for (i in 0 until regularFormats.length()) {
+                    val fmt = regularFormats.optJSONObject(i) ?: continue
+                    val url = fmt.optString("url", "").takeIf { it.isNotBlank() } ?: continue
+                    val bitrate = fmt.optInt("bitrate", 0)
+                    if (bitrate > bestBitrate) { bestBitrate = bitrate; bestUrl = url }
+                }
+            }
+
+            if (bestUrl == null) return null
+
             Song("yt_$videoId", title, author, null, thumbnail, durationSec, bestUrl, "youtube")
         } catch (e: Exception) { null }
     }

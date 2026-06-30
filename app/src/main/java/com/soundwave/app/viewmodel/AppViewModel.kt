@@ -204,13 +204,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val fresh = try { SaavnApi.getSongById(song.id) } catch (e: Exception) { null }
             var playable = fresh?.takeIf { it.streamUrl != null }
 
-            // ID lookup can fail if the video was removed or ID changed.
-            // Fall back to re-searching by title + artist to find a playable match.
             if (playable == null) {
+                // For YouTube songs: re-search on YouTube and get a fresh stream URL
+                // For JioSaavn songs: re-search on JioSaavn
                 playable = try {
-                    SaavnApi.search("${song.title} ${song.artist}")
-                        .firstOrNull { it.streamUrl != null }
+                    val results = SaavnApi.search("${song.title} ${song.artist}")
+                    // Find the right source match first, then any playable result
+                    results.firstOrNull { it.source == song.source && it.streamUrl != null }
+                        ?: results.firstOrNull { it.streamUrl != null }
                 } catch (e: Exception) { null }
+
+                // If still null and it's a YouTube song, try fetching stream directly by re-searching
+                if (playable == null && song.id.startsWith("yt_")) {
+                    playable = try {
+                        val ytResults = SaavnApi.search("${song.title} ${song.artist}")
+                        val ytSong = ytResults.firstOrNull { it.source == "youtube" }
+                        ytSong?.let { SaavnApi.getSongById(it.id) }?.takeIf { it.streamUrl != null }
+                    } catch (e: Exception) { null }
+                }
             }
 
             if (playable?.streamUrl != null) {
