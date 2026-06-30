@@ -126,8 +126,20 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             while (true) {
                 val c = mediaController
-                if (c != null && c.duration > 0) {
-                    vm.updateProgress(c.currentPosition / 1000f, c.duration / 1000f)
+                if (c != null) {
+                    // ExoPlayer's c.duration can stay C.TIME_UNSET (-1) for a while
+                    // after loading a new stream URL, especially for YouTube audio
+                    // streams that don't expose duration in headers immediately.
+                    // Fall back to the song's known duration from the API response
+                    // so the seek bar / time display isn't stuck at 0:00.
+                    val exoDuration = c.duration
+                    val fallbackDuration = vm.currentSong.value?.durationSec?.toFloat() ?: 0f
+                    val effectiveDuration = if (exoDuration > 0) exoDuration / 1000f else fallbackDuration
+
+                    if (effectiveDuration > 0) {
+                        val position = c.currentPosition.takeIf { it >= 0 } ?: 0L
+                        vm.updateProgress(position / 1000f, effectiveDuration)
+                    }
                 }
                 delay(500)
             }
