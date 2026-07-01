@@ -301,6 +301,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             savedAlbums = savedAlbums,
                             recommendedSongs = recommendedSongs,
                             currentSongId = currentSong?.id,
+                            isAudioPlaying = isPlaying,
                             likedIds = likedIds,
                             onPlay = { vm.playSong(it, recentlyPlayed) },
                             onLike = { vm.toggleLike(it) },
@@ -391,20 +392,32 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
             }
         }
 
-        if (showNowPlaying && currentSong != null) {
-            NowPlayingScreen(
-                song = currentSong!!, isPlaying = isPlaying, isLiked = likedIds.contains(currentSong!!.id),
-                isDownloaded = downloadedIds.contains(currentSong!!.id),
-                progress = progress, duration = duration, shuffle = shuffle, repeat = repeat,
-                sleepTimerMins = sleepTimerMins,
-                onClose = { showNowPlaying = false }, onTogglePlay = { vm.togglePlayPause() },
-                onNext = { vm.next() }, onPrevious = { vm.previous() },
-                onSeek = { vm.seekTo(it) }, onLike = { vm.toggleLike(currentSong!!) },
-                onToggleShuffle = { vm.toggleShuffle() }, onCycleRepeat = { vm.cycleRepeat() },
-                onToggleDownload = { vm.toggleDownload(currentSong!!) },
-                onSetSleepTimer = { vm.setSleepTimer(it) },
-                onShowQueue = { showQueue = true }
-            )
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showNowPlaying && currentSong != null,
+            enter = androidx.compose.animation.slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)),
+            exit = androidx.compose.animation.slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = androidx.compose.animation.core.tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150))
+        ) {
+            currentSong?.let { song ->
+                NowPlayingScreen(
+                    song = song, isPlaying = isPlaying, isLiked = likedIds.contains(song.id),
+                    isDownloaded = downloadedIds.contains(song.id),
+                    progress = progress, duration = duration, shuffle = shuffle, repeat = repeat,
+                    sleepTimerMins = sleepTimerMins,
+                    onClose = { showNowPlaying = false }, onTogglePlay = { vm.togglePlayPause() },
+                    onNext = { vm.next() }, onPrevious = { vm.previous() },
+                    onSeek = { vm.seekTo(it) }, onLike = { vm.toggleLike(song) },
+                    onToggleShuffle = { vm.toggleShuffle() }, onCycleRepeat = { vm.cycleRepeat() },
+                    onToggleDownload = { vm.toggleDownload(song) },
+                    onSetSleepTimer = { vm.setSleepTimer(it) },
+                    onShowQueue = { showQueue = true }
+                )
+            }
         }
 
         if (showQueue) {

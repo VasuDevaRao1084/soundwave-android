@@ -1,13 +1,17 @@
 package com.soundwave.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,10 +21,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundwave.app.data.Song
+import com.soundwave.app.ui.components.PlayingWaveform
 import com.soundwave.app.ui.components.SongRow
 import com.soundwave.app.ui.theme.SwBg
 import com.soundwave.app.ui.theme.SwPurple
 import com.soundwave.app.ui.theme.SwSurface
+import com.soundwave.app.ui.theme.SwTextSecondary
+import com.soundwave.app.ui.theme.SwTextTertiary
 
 @Composable
 fun SearchScreen(
@@ -42,26 +49,24 @@ fun SearchScreen(
     ) {
         Spacer(Modifier.height(52.dp))
 
-        // Header
         Text(
             "Search",
             color = Color.White,
             fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.ExtraBold,
             modifier = Modifier.padding(horizontal = 20.dp)
         )
         Spacer(Modifier.height(16.dp))
 
-        // Search field
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = { Text("Songs, artists, albums...", color = Color(0xFF4A4560)) },
+            placeholder = { Text("Songs, artists, albums...", color = SwTextTertiary) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = SwPurple) },
             trailingIcon = {
                 if (query.isNotBlank()) {
                     IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = Color(0xFF6B6080))
+                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = SwTextSecondary)
                     }
                 }
             },
@@ -85,55 +90,62 @@ fun SearchScreen(
 
         when {
             isSearching -> Box(Modifier.fillMaxWidth().padding(60.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = SwPurple, strokeWidth = 2.dp)
+                // Waveform doubles as the loading indicator — searching reads
+                // as "listening for matches" instead of a generic spinner
+                PlayingWaveform(isPlaying = true, color = SwPurple, barWidth = 4.dp, maxHeight = 28.dp)
             }
-            results.isEmpty() && query.isNotBlank() -> Box(
-                Modifier.fillMaxWidth().padding(60.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🎵", fontSize = 40.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Text("No results found", color = Color.White, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Try a different search term", color = Color(0xFF6B6080), fontSize = 13.sp)
-                }
-            }
-            results.isEmpty() -> Box(
-                Modifier.fillMaxWidth().padding(60.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🔍", fontSize = 40.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Text("Find your music", color = Color.White, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Search for any song or artist", color = Color(0xFF6B6080), fontSize = 13.sp)
-                }
-            }
+            results.isEmpty() && query.isNotBlank() -> EmptyState(
+                title = "No results found",
+                subtitle = "Try a different search term"
+            )
+            results.isEmpty() -> EmptyState(
+                title = "Find your music",
+                subtitle = "Search for any song or artist"
+            )
             else -> {
-                Text(
-                    "${results.size} results",
-                    color = Color(0xFF6B6080),
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    items(results) { song ->
-                        SongRow(
-                            song = song,
-                            isPlaying = song.id == currentSongId,
-                            isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying,
-                            isLiked = likedIds.contains(song.id),
-                            onClick = { onPlay(song) },
-                            onLikeClick = { onLike(song) },
-                            onMoreClick = { onAddToPlaylist(song) }
+                AnimatedVisibility(visible = true, enter = fadeIn(tween(250))) {
+                    Column {
+                        Text(
+                            "${results.size} results",
+                            color = SwTextSecondary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp)
                         )
+                        Spacer(Modifier.height(8.dp))
+                        LazyColumn(contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            items(results) { song ->
+                                SongRow(
+                                    song = song,
+                                    isPlaying = song.id == currentSongId,
+                                    isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying,
+                                    isLiked = likedIds.contains(song.id),
+                                    onClick = { onPlay(song) },
+                                    onLikeClick = { onLike(song) },
+                                    onMoreClick = { onAddToPlaylist(song) }
+                                )
+                            }
+                            item { Spacer(Modifier.height(120.dp)) }
+                        }
                     }
-                    item { Spacer(Modifier.height(120.dp)) }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(title: String, subtitle: String) {
+    Box(
+        Modifier.fillMaxWidth().padding(60.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Static waveform bars (not animated) signal "idle" rather than "loading"
+            PlayingWaveform(isPlaying = false, color = SwTextTertiary, barWidth = 4.dp, maxHeight = 24.dp)
+            Spacer(Modifier.height(16.dp))
+            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(subtitle, color = SwTextSecondary, fontSize = 13.sp)
         }
     }
 }
