@@ -97,9 +97,17 @@ class MainActivity : ComponentActivity() {
                 val currentPos = c.currentPosition
                 val wasPlaying = c.isPlaying
 
-                // Update the full playlist. ExoPlayer resets position on setMediaItems,
-                // so we immediately seek back to where we were to avoid any audible glitch.
-                c.setMediaItems(mediaItems, safeStartIndex, currentPos.coerceAtLeast(0L))
+                // Only preserve the current playback position if the song at
+                // safeStartIndex is the SAME song already playing (e.g. this is
+                // a background queue-window refresh from playSong(), not a brand
+                // new song starting). Otherwise this carries the OLD song's
+                // position onto the NEW song, making every new track start
+                // partway through instead of at 0 — that was the bug.
+                val targetMediaId = mediaItems[safeStartIndex].mediaId
+                val isSameSongAlreadyPlaying = c.currentMediaItem?.mediaId == targetMediaId
+                val startPositionMs = if (isSameSongAlreadyPlaying) currentPos.coerceAtLeast(0L) else 0L
+
+                c.setMediaItems(mediaItems, safeStartIndex, startPositionMs)
                 c.prepare()
                 if (wasPlaying) c.play()
             }

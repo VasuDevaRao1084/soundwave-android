@@ -483,21 +483,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val results = SaavnApi.search("${song.title} ${song.artist}")
                 results.firstOrNull { it.streamUrl != null }
             }
-            val url = playable?.streamUrl ?: return
+            val url = playable?.streamUrl ?: run {
+                _playbackError.value = "Couldn't find a downloadable version of \"${song.title}\""
+                return
+            }
 
-            // Save to app's private files directory — no permission needed
-            val downloadsDir = java.io.File(appContext.filesDir, "downloads").also { it.mkdirs() }
-            val file = java.io.File(downloadsDir, "${song.id}.m4a")
+            // The actual network + disk I/O MUST run off the main thread —
+            // HttpURLConnection.connect()/getInputStream() throw
+            // NetworkOnMainThreadException if called from Dispatchers.Main,
+            // which is what viewModelScope.launch uses by default. That
+            // exception was being silently swallowed by the catch block
+            // below, so downloads always failed instantly with no visible
+            // progress and nothing ever appeared in the Downloads tab.
+            val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val downloadsDir = java.io.File(appContext.filesDir, "downloads").also { it.mkdirs() }
+                val targetFile = java.io.File(downloadsDir, "${song.id}.m4a")
 
-            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 60_000
-            connection.connect()
-
-            connection.inputStream.use { input ->
-                file.outputStream().use { output ->
-                    input.copyTo(output, bufferSize = 8 * 1024)
+                val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 60_000
+                try {
+                    connection.connect()
+                    if (connection.responseCode !in 200..299) {
+                        throw java.io.IOException("Server returned HTTP ${connection.responseCode}")
+                    }
+                    connection.inputStream.use { input ->
+                        targetFile.outputStream().use { output ->
+                            input.copyTo(output, bufferSize = 8 * 1024)
+                        }
+                    }
+                } finally {
+                    connection.disconnect()
                 }
+                targetFile
             }
 
             // Save metadata for offline browsing
@@ -511,6 +529,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .apply()
         } catch (e: Exception) {
             android.util.Log.e("SoundWave", "Download failed for ${song.title}", e)
+            _playbackError.value = "Download failed for \"${song.title}\""
         } finally {
             _downloadingIds.value = _downloadingIds.value - song.id
         }
