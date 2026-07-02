@@ -80,6 +80,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val searchResults: StateFlow<List<Song>> = _searchResults.asStateFlow()
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+    private val _searchHistory = MutableStateFlow<List<String>>(restoreSearchHistory())
+    val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
 
     // ── Playback state (mirrors PlaybackService) ─────────────────────
     private val _currentSong = MutableStateFlow<Song?>(null)
@@ -104,6 +106,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _downloadedIds = MutableStateFlow<Set<String>>(restoreDownloads())
     val downloadedIds: StateFlow<Set<String>> = _downloadedIds.asStateFlow()
+    // Maps song ID → absolute path of the locally downloaded audio file
+    private val _downloadedPaths = MutableStateFlow<Map<String, String>>(restoreDownloadPaths())
+    val downloadedPaths: StateFlow<Map<String, String>> = _downloadedPaths.asStateFlow()
+    private val _downloadingIds = MutableStateFlow<Set<String>>(emptySet())
+    val downloadingIds: StateFlow<Set<String>> = _downloadingIds.asStateFlow()
     private val _playbackError = MutableStateFlow<String?>(null)
     val playbackError: StateFlow<String?> = _playbackError.asStateFlow()
     fun clearPlaybackError() { _playbackError.value = null }
@@ -190,12 +197,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 _searchResults.value = SaavnApi.search(query)
+                // Save to recent searches (deduped, max 10)
+                val updated = (listOf(query) + _searchHistory.value.filter { it != query }).take(10)
+                _searchHistory.value = updated
+                appContext.getSharedPreferences("soundwave_search", Application.MODE_PRIVATE)
+                    .edit().putString("history", updated.joinToString("|||")).apply()
             } catch (e: Exception) {
                 _searchResults.value = emptyList()
             } finally {
                 _isSearching.value = false
             }
         }
+    }
+
+    fun clearSearchHistory() {
+        _searchHistory.value = emptyList()
+        appContext.getSharedPreferences("soundwave_search", Application.MODE_PRIVATE)
+            .edit().remove("history").apply()
+    }
+
+    private fun restoreSearchHistory(): List<String> {
+        val raw = appContext.getSharedPreferences("soundwave_search", Application.MODE_PRIVATE)
+            .getString("history", null) ?: return emptyList()
+        return raw.split("|||").filter { it.isNotBlank() }
     }
 
     fun playSong(song: Song, fromQueue: List<Song>? = null) {
@@ -210,9 +234,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _user.value?.let { u -> viewModelScope.launch { SupabaseClient.trackPlay(u.id, song) } }
         updateSmartRecommendations(song)
 
-        // Resolve a fresh, playable stream URL for a single song (used for
-        // both the starting song and lazily for queue neighbors).
         suspend fun resolvePlayable(s: Song): Song? {
+            // Check offline first — if we have a local file, use it immediately
+            val localPath = _downloadedPaths.value[s.id]
+            if (localPath != null && java.io.File(localPath).exists()) {
+                return s.copy(streamUrl = "file://$localPath")
+            }
             val fresh = try { SaavnApi.getSongById(s.id) } catch (e: Exception) { null }
             var playable = fresh?.takeIf { it.streamUrl != null }
             if (playable == null) {
@@ -226,20 +253,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         viewModelScope.launch {
+            // ── Step 1: Start playing the tapped song IMMEDIATELY ──────────────
+            // If the song already has a stream URL (from search results or
+            // local file), hand it to ExoPlayer right now — zero delay.
+            // This stops the previous song instantly and starts the new one.
+            val immediateUrl = run {
+                val localPath = _downloadedPaths.value[song.id]
+                if (localPath != null && java.io.File(localPath).exists()) "file://$localPath"
+                else song.streamUrl
+            }
+
+            if (immediateUrl != null) {
+                val immediate = song.copy(streamUrl = immediateUrl)
+                _currentSong.value = immediate
+                controllerBridge?.play(immediate)
+            }
+
+            // ── Step 2: Fetch a fresh URL in background (stream URLs expire) ───
+            // Do this even if we already started playing — the current URL
+            // might be stale if this song was from a liked/playlist list.
             val playableStart = resolvePlayable(song)
             if (playableStart?.streamUrl == null) {
-                _playbackError.value = "Couldn't find a playable version of \"${song.title}\""
-                _isPlaying.value = false
+                if (immediateUrl == null) {
+                    _playbackError.value = "Couldn't find a playable version of \"${song.title}\""
+                    _isPlaying.value = false
+                }
                 return@launch
             }
             _currentSong.value = playableStart
 
-            // Resolve stream URLs for the rest of the queue (a window around
-            // the current song) so ExoPlayer has a real multi-item playlist —
-            // this is what makes the system widget's Next/Previous buttons work,
-            // since Android calls ExoPlayer's native seekToNext/Previous directly,
-            // bypassing our app's UI entirely.
-            val windowSize = 10
+            // Only update ExoPlayer with the fresh URL if we didn't already
+            // start playing (i.e. there was no immediateUrl), to avoid
+            // restarting a song that's already playing fine.
+            if (immediateUrl == null) {
+                controllerBridge?.play(playableStart)
+            }
+
+            // ── Step 3: Resolve queue neighbors in background ─────────────────
+            // Do this AFTER starting playback so it never blocks the user.
+            // Fills in the queue window so Next/Previous widget buttons work.
+            val windowSize = 5 // reduced from 10 — less background work
             val from = (startIndex - windowSize).coerceAtLeast(0)
             val to = (startIndex + windowSize).coerceAtMost(queueToUse.size - 1)
             val windowSongs = queueToUse.subList(from, to + 1).toMutableList()
@@ -248,9 +301,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
             val resolvedWindow = windowSongs.mapIndexed { idx, s ->
                 if (idx == relativeStartIndex) s
-                else (resolvePlayable(s) ?: s) // best-effort; unplayable ones get skipped by ExoPlayer's error handling
+                else {
+                    val local = _downloadedPaths.value[s.id]
+                    if (local != null && java.io.File(local).exists()) s.copy(streamUrl = "file://$local")
+                    else (try { SaavnApi.getSongById(s.id) } catch (e: Exception) { null }) ?: s
+                }
             }
 
+            // Update ExoPlayer's queue now that neighbors are resolved —
+            // seekTo keeps playback position so the current song isn't restarted
             controllerBridge?.playQueue(resolvedWindow, relativeStartIndex)
         }
     }
@@ -383,25 +442,91 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         getApplication<Application>().getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
             .getStringSet("ids", emptySet()) ?: emptySet()
 
+    private fun restoreDownloadPaths(): Map<String, String> {
+        val prefs = getApplication<Application>().getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
+        val all = prefs.all
+        return all.entries
+            .filter { it.key.startsWith("path_") }
+            .associate { it.key.removePrefix("path_") to (it.value as? String ?: "") }
+            .filter { it.value.isNotBlank() }
+    }
+
     fun isDownloaded(song: Song) = _downloadedIds.value.contains(song.id)
 
     fun toggleDownload(song: Song) {
-        val cur = _downloadedIds.value
-        _downloadedIds.value = if (cur.contains(song.id)) cur - song.id else cur + song.id
-        downloadsPrefs.edit().putStringSet("ids", _downloadedIds.value).apply()
-        // Cache the song's metadata so it can be browsed offline, same as web app
-        val metaPrefs = appContext.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
         if (_downloadedIds.value.contains(song.id)) {
-            metaPrefs.edit().putString(song.id, songToJson(song).toString()).apply()
+            // Delete the local audio file and remove from tracking
+            val path = _downloadedPaths.value[song.id]
+            if (path != null) {
+                try { java.io.File(path).delete() } catch (e: Exception) { /* ignore */ }
+            }
+            _downloadedIds.value = _downloadedIds.value - song.id
+            _downloadedPaths.value = _downloadedPaths.value - song.id
+            downloadsPrefs.edit()
+                .putStringSet("ids", _downloadedIds.value)
+                .remove("path_${song.id}")
+                .remove("meta_${song.id}")
+                .apply()
         } else {
-            metaPrefs.edit().remove(song.id).apply()
+            // Kick off a real background download of the audio file
+            viewModelScope.launch { downloadSong(song) }
+        }
+    }
+
+    private suspend fun downloadSong(song: Song) {
+        if (_downloadingIds.value.contains(song.id)) return
+        _downloadingIds.value = _downloadingIds.value + song.id
+
+        try {
+            // Get a fresh stream URL — the one on the song object may be stale
+            val playable = SaavnApi.getSongById(song.id) ?: run {
+                val results = SaavnApi.search("${song.title} ${song.artist}")
+                results.firstOrNull { it.streamUrl != null }
+            }
+            val url = playable?.streamUrl ?: return
+
+            // Save to app's private files directory — no permission needed
+            val downloadsDir = java.io.File(appContext.filesDir, "downloads").also { it.mkdirs() }
+            val file = java.io.File(downloadsDir, "${song.id}.m4a")
+
+            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 60_000
+            connection.connect()
+
+            connection.inputStream.use { input ->
+                file.outputStream().use { output ->
+                    input.copyTo(output, bufferSize = 8 * 1024)
+                }
+            }
+
+            // Save metadata for offline browsing
+            val metaStr = songToJson(song.copy(streamUrl = null)).toString()
+            _downloadedIds.value = _downloadedIds.value + song.id
+            _downloadedPaths.value = _downloadedPaths.value + (song.id to file.absolutePath)
+            downloadsPrefs.edit()
+                .putStringSet("ids", _downloadedIds.value)
+                .putString("path_${song.id}", file.absolutePath)
+                .putString("meta_${song.id}", metaStr)
+                .apply()
+        } catch (e: Exception) {
+            android.util.Log.e("SoundWave", "Download failed for ${song.title}", e)
+        } finally {
+            _downloadingIds.value = _downloadingIds.value - song.id
         }
     }
 
     fun listDownloadedSongs(): List<Song> {
-        val metaPrefs = appContext.getSharedPreferences("soundwave_downloads_meta", Application.MODE_PRIVATE)
         return _downloadedIds.value.mapNotNull { id ->
-            metaPrefs.getString(id, null)?.let { jsonStr -> try { jsonToSong(JSONObject(jsonStr)) } catch (e: Exception) { null } }
+            val metaStr = downloadsPrefs.getString("meta_$id", null) ?: return@mapNotNull null
+            try {
+                val song = jsonToSong(JSONObject(metaStr))
+                // Point streamUrl at local file so it plays offline
+                val localPath = _downloadedPaths.value[id]
+                if (localPath != null && java.io.File(localPath).exists()) {
+                    song.copy(streamUrl = "file://$localPath")
+                } else song
+            } catch (e: Exception) { null }
         }
     }
 

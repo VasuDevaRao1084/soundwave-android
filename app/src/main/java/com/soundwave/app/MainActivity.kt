@@ -91,18 +91,17 @@ class MainActivity : ComponentActivity() {
                         )
                         .build()
                 }
-                if (mediaItems.isEmpty()) {
-                    android.widget.Toast.makeText(this@MainActivity, "No stream URL for this song", android.widget.Toast.LENGTH_LONG).show()
-                    return
-                }
+                if (mediaItems.isEmpty()) return
                 val safeStartIndex = startIndex.coerceIn(0, mediaItems.size - 1)
-                // setMediaItems (plural) gives ExoPlayer a real multi-song playlist,
-                // so native seekToNext/seekToPrevious work — this is what makes
-                // the system notification/lock-screen widget's skip buttons functional,
-                // since Android calls those ExoPlayer methods directly.
-                mediaController?.setMediaItems(mediaItems, safeStartIndex, 0L)
-                mediaController?.prepare()
-                mediaController?.play()
+                val c = mediaController ?: return
+                val currentPos = c.currentPosition
+                val wasPlaying = c.isPlaying
+
+                // Update the full playlist. ExoPlayer resets position on setMediaItems,
+                // so we immediately seek back to where we were to avoid any audible glitch.
+                c.setMediaItems(mediaItems, safeStartIndex, currentPos.coerceAtLeast(0L))
+                c.prepare()
+                if (wasPlaying) c.play()
             }
             override fun togglePlayPause() {
                 val c = mediaController ?: return
@@ -238,6 +237,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val duration by vm.duration.collectAsState()
     val playbackError by vm.playbackError.collectAsState()
     val downloadedIds by vm.downloadedIds.collectAsState()
+    val downloadingIds by vm.downloadingIds.collectAsState()
+    val searchHistory by vm.searchHistory.collectAsState()
     val sleepTimerMins by vm.sleepTimerMins.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -315,9 +316,11 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         )
                         Tab.SEARCH -> SearchScreen(
                             query = query, onQueryChange = { query = it }, results = searchResults,
-                            isSearching = isSearching, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
+                            isSearching = isSearching, searchHistory = searchHistory,
+                            currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
                             onPlay = { vm.playSong(it, searchResults) }, onLike = { vm.toggleLike(it) },
-                            onAddToPlaylist = { addToPlaylistSong = it }
+                            onAddToPlaylist = { addToPlaylistSong = it },
+                            onClearHistory = { vm.clearSearchHistory() }
                         )
                         Tab.LIBRARY -> LibraryScreen(
                             likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
@@ -407,6 +410,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                 NowPlayingScreen(
                     song = song, isPlaying = isPlaying, isLiked = likedIds.contains(song.id),
                     isDownloaded = downloadedIds.contains(song.id),
+                    isDownloading = downloadingIds.contains(song.id),
                     progress = progress, duration = duration, shuffle = shuffle, repeat = repeat,
                     sleepTimerMins = sleepTimerMins,
                     onClose = { showNowPlaying = false }, onTogglePlay = { vm.togglePlayPause() },

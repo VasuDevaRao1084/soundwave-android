@@ -3,20 +3,24 @@ package com.soundwave.app.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,23 +33,29 @@ import com.soundwave.app.ui.theme.SwSurface
 import com.soundwave.app.ui.theme.SwTextSecondary
 import com.soundwave.app.ui.theme.SwTextTertiary
 
+private val topSearches = listOf(
+    "Trending Telugu", "Arijit Singh", "Glass Animals",
+    "AR Rahman", "The Weeknd", "Sid Sriram", "Taylor Swift",
+    "Anirudh Ravichander", "Drake", "Dua Lipa"
+)
+
 @Composable
 fun SearchScreen(
     query: String,
     onQueryChange: (String) -> Unit,
     results: List<Song>,
     isSearching: Boolean,
+    searchHistory: List<String>,
     currentSongId: String?,
     isAudioPlaying: Boolean,
     likedIds: Set<String>,
     onPlay: (Song) -> Unit,
     onLike: (Song) -> Unit,
-    onAddToPlaylist: (Song) -> Unit
+    onAddToPlaylist: (Song) -> Unit,
+    onClearHistory: () -> Unit
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SwBg)
+        modifier = Modifier.fillMaxSize().background(SwBg)
     ) {
         Spacer(Modifier.height(52.dp))
 
@@ -81,55 +91,117 @@ fun SearchScreen(
                 unfocusedTextColor = Color.White,
                 cursorColor = SwPurple
             ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
         when {
             isSearching -> Box(Modifier.fillMaxWidth().padding(60.dp), contentAlignment = Alignment.Center) {
-                // Waveform doubles as the loading indicator — searching reads
-                // as "listening for matches" instead of a generic spinner
                 PlayingWaveform(isPlaying = true, color = SwPurple, barWidth = 4.dp, maxHeight = 28.dp)
             }
-            results.isEmpty() && query.isNotBlank() -> EmptyState(
+
+            query.isBlank() -> {
+                // ── Pre-search: recent + top searches ─────────────────────────
+                LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+                    if (searchHistory.isNotEmpty()) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Recent searches", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                TextButton(onClick = onClearHistory) {
+                                    Text("Clear all", color = SwPurple, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                        items(searchHistory) { term ->
+                            SearchChipRow(
+                                label = term,
+                                icon = Icons.Filled.History,
+                                onClick = { onQueryChange(term) }
+                            )
+                        }
+                        item { Spacer(Modifier.height(16.dp)) }
+                    }
+
+                    item {
+                        Text(
+                            "Popular searches",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                        )
+                    }
+                    items(topSearches) { term ->
+                        SearchChipRow(
+                            label = term,
+                            icon = Icons.Filled.TrendingUp,
+                            onClick = { onQueryChange(term) }
+                        )
+                    }
+                    item { Spacer(Modifier.height(120.dp)) }
+                }
+            }
+
+            results.isEmpty() -> EmptyState(
                 title = "No results found",
                 subtitle = "Try a different search term"
             )
-            results.isEmpty() -> EmptyState(
-                title = "Find your music",
-                subtitle = "Search for any song or artist"
-            )
-            else -> {
-                AnimatedVisibility(visible = true, enter = fadeIn(tween(250))) {
-                    Column {
-                        Text(
-                            "${results.size} results",
-                            color = SwTextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp)
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        LazyColumn(contentPadding = PaddingValues(horizontal = 8.dp)) {
-                            items(results) { song ->
-                                SongRow(
-                                    song = song,
-                                    isPlaying = song.id == currentSongId,
-                                    isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying,
-                                    isLiked = likedIds.contains(song.id),
-                                    onClick = { onPlay(song) },
-                                    onLikeClick = { onLike(song) },
-                                    onMoreClick = { onAddToPlaylist(song) }
-                                )
-                            }
-                            item { Spacer(Modifier.height(120.dp)) }
+
+            else -> AnimatedVisibility(visible = true, enter = fadeIn(tween(250))) {
+                Column {
+                    Text(
+                        "${results.size} results",
+                        color = SwTextSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LazyColumn(contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        items(results) { song ->
+                            SongRow(
+                                song = song,
+                                isPlaying = song.id == currentSongId,
+                                isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying,
+                                isLiked = likedIds.contains(song.id),
+                                onClick = { onPlay(song) },
+                                onLikeClick = { onLike(song) },
+                                onMoreClick = { onAddToPlaylist(song) }
+                            )
                         }
+                        item { Spacer(Modifier.height(120.dp)) }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SearchChipRow(label: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(SwSurface),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = SwTextSecondary, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -140,7 +212,6 @@ private fun EmptyState(title: String, subtitle: String) {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Static waveform bars (not animated) signal "idle" rather than "loading"
             PlayingWaveform(isPlaying = false, color = SwTextTertiary, barWidth = 4.dp, maxHeight = 24.dp)
             Spacer(Modifier.height(16.dp))
             Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)

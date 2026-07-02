@@ -46,6 +46,7 @@ fun NowPlayingScreen(
     isPlaying: Boolean,
     isLiked: Boolean,
     isDownloaded: Boolean,
+    isDownloading: Boolean,
     progress: Float,
     duration: Float,
     shuffle: Boolean,
@@ -226,11 +227,17 @@ fun NowPlayingScreen(
                     tint = if (showLyrics) primaryColor else Color(0xFF4A4560),
                     onClick = { showLyrics = !showLyrics }
                 )
-                ActionIcon(
-                    icon = if (isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
-                    tint = if (isDownloaded) primaryColor else Color(0xFF4A4560),
-                    onClick = onToggleDownload
-                )
+                if (isDownloading) {
+                    Box(modifier = androidx.compose.ui.Modifier.size(48.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                        CircularProgressIndicator(modifier = androidx.compose.ui.Modifier.size(20.dp), color = primaryColor, strokeWidth = 2.dp)
+                    }
+                } else {
+                    ActionIcon(
+                        icon = if (isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
+                        tint = if (isDownloaded) primaryColor else Color(0xFF4A4560),
+                        onClick = onToggleDownload
+                    )
+                }
                 ActionIcon(
                     icon = Icons.Filled.Bedtime,
                     tint = if (sleepTimerMins != null) primaryColor else Color(0xFF4A4560),
