@@ -380,7 +380,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         Tab.LIBRARY -> LibraryScreen(
                             likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
                             downloadedSongs = vm.listDownloadedSongs(),
-                            currentSongId = currentSong?.id, isAudioPlaying = isPlaying, onPlay = { vm.playSong(it, likedSongs) },
+                            currentSongId = currentSong?.id, isAudioPlaying = isPlaying, onPlay = { song, q -> vm.playSong(song, q) },
                             onLike = { vm.toggleLike(it) }, onOpenPlaylist = { openPlaylist = it }, onOpenAlbum = { openAlbum = it },
                             onCreatePlaylist = { vm.createPlaylist(it) },
                             onDeletePlaylist = { vm.deletePlaylist(it.id) },

@@ -37,7 +37,7 @@ fun LibraryScreen(
     downloadedSongs: List<Song>,
     currentSongId: String?,
     isAudioPlaying: Boolean,
-    onPlay: (Song) -> Unit,
+    onPlay: (Song, List<Song>) -> Unit,
     onLike: (Song) -> Unit,
     onOpenPlaylist: (Playlist) -> Unit,
     onOpenAlbum: (SavedAlbum) -> Unit,
@@ -66,7 +66,7 @@ fun LibraryScreen(
         when (tab) {
             0 -> if (likedSongs.isEmpty()) EmptyState("No liked songs yet") else LazyColumn {
                 items(likedSongs) { song ->
-                    SongRow(song = song, isPlaying = song.id == currentSongId, isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying, isLiked = true, onClick = { onPlay(song) }, onLikeClick = { onLike(song) })
+                    SongRow(song = song, isPlaying = song.id == currentSongId, isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying, isLiked = true, onClick = { onPlay(song, likedSongs) }, onLikeClick = { onLike(song) })
                 }
                 item { Spacer(Modifier.height(100.dp)) }
             }
@@ -86,7 +86,7 @@ fun LibraryScreen(
             }
             3 -> if (downloadedSongs.isEmpty()) EmptyState("No downloaded songs yet") else LazyColumn {
                 items(downloadedSongs) { song ->
-                    SongRow(song = song, isPlaying = song.id == currentSongId, isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying, isLiked = false, onClick = { onPlay(song) })
+                    SongRow(song = song, isPlaying = song.id == currentSongId, isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying, isLiked = false, onClick = { onPlay(song, downloadedSongs) })
                 }
                 item { Spacer(Modifier.height(100.dp)) }
             }

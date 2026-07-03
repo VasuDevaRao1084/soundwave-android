@@ -292,25 +292,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // ── Step 3: Resolve queue neighbors in background ─────────────────
             // Do this AFTER starting playback so it never blocks the user.
             // Fills in the queue window so Next/Previous widget buttons work.
-            val windowSize = 5 // reduced from 10 — less background work
-            val from = (startIndex - windowSize).coerceAtLeast(0)
-            val to = (startIndex + windowSize).coerceAtMost(queueToUse.size - 1)
-            val windowSongs = queueToUse.subList(from, to + 1).toMutableList()
-            val relativeStartIndex = startIndex - from
-            windowSongs[relativeStartIndex] = playableStart
+            //
+            // Defensive: if queueToUse doesn't actually contain the song being
+            // played (e.g. a caller passed the wrong list — this is exactly
+            // what caused a real IndexOutOfBoundsException crash before),
+            // fall back to a single-song queue instead of indexing into a
+            // list that doesn't have the song in it. Also wrapped in a
+            // try/catch as a last-resort safety net: this step is a
+            // background nice-to-have (Next/Previous queue), so if anything
+            // still goes wrong here, playback (already started in Step 1/2)
+            // just continues without crashing the app.
+            try {
+                val safeQueue = if (queueToUse.isNotEmpty() && startIndex < queueToUse.size) queueToUse else listOf(song)
+                val safeStartIndex = if (safeQueue === queueToUse) startIndex else 0
 
-            val resolvedWindow = windowSongs.mapIndexed { idx, s ->
-                if (idx == relativeStartIndex) s
-                else {
-                    val local = validLocalFileOrNull(s.id)
-                    if (local != null) s.copy(streamUrl = "file://$local")
-                    else (try { SaavnApi.getSongById(s.id) } catch (e: Exception) { null }) ?: s
+                val windowSize = 5 // reduced from 10 — less background work
+                val from = (safeStartIndex - windowSize).coerceAtLeast(0)
+                val to = (safeStartIndex + windowSize).coerceAtMost(safeQueue.size - 1)
+                val windowSongs = safeQueue.subList(from, to + 1).toMutableList()
+                val relativeStartIndex = (safeStartIndex - from).coerceIn(0, windowSongs.size - 1)
+                if (windowSongs.isEmpty()) return@launch
+                windowSongs[relativeStartIndex] = playableStart
+
+                val resolvedWindow = windowSongs.mapIndexed { idx, s ->
+                    if (idx == relativeStartIndex) s
+                    else {
+                        val local = validLocalFileOrNull(s.id)
+                        if (local != null) s.copy(streamUrl = "file://$local")
+                        else (try { SaavnApi.getSongById(s.id) } catch (e: Exception) { null }) ?: s
+                    }
                 }
-            }
 
-            // Update ExoPlayer's queue now that neighbors are resolved —
-            // seekTo keeps playback position so the current song isn't restarted
-            controllerBridge?.playQueue(resolvedWindow, relativeStartIndex)
+                // Update ExoPlayer's queue now that neighbors are resolved —
+                // seekTo keeps playback position so the current song isn't restarted
+                controllerBridge?.playQueue(resolvedWindow, relativeStartIndex)
+            } catch (e: Exception) {
+                android.util.Log.e("SoundWave", "Queue window resolution failed (non-fatal)", e)
+            }
         }
     }
 
