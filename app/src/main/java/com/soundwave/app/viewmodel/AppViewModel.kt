@@ -236,8 +236,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         suspend fun resolvePlayable(s: Song): Song? {
             // Check offline first — if we have a local file, use it immediately
-            val localPath = _downloadedPaths.value[s.id]
-            if (localPath != null && java.io.File(localPath).exists()) {
+            val localPath = validLocalFileOrNull(s.id)
+            if (localPath != null) {
                 return s.copy(streamUrl = "file://$localPath")
             }
             val fresh = try { SaavnApi.getSongById(s.id) } catch (e: Exception) { null }
@@ -258,8 +258,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // local file), hand it to ExoPlayer right now — zero delay.
             // This stops the previous song instantly and starts the new one.
             val immediateUrl = run {
-                val localPath = _downloadedPaths.value[song.id]
-                if (localPath != null && java.io.File(localPath).exists()) "file://$localPath"
+                val localPath = validLocalFileOrNull(song.id)
+                if (localPath != null) "file://$localPath"
                 else song.streamUrl
             }
 
@@ -302,8 +302,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val resolvedWindow = windowSongs.mapIndexed { idx, s ->
                 if (idx == relativeStartIndex) s
                 else {
-                    val local = _downloadedPaths.value[s.id]
-                    if (local != null && java.io.File(local).exists()) s.copy(streamUrl = "file://$local")
+                    val local = validLocalFileOrNull(s.id)
+                    if (local != null) s.copy(streamUrl = "file://$local")
                     else (try { SaavnApi.getSongById(s.id) } catch (e: Exception) { null }) ?: s
                 }
             }
@@ -438,6 +438,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     //    are actually saved — matches the web app's existing behavior) ──────
     private val downloadsPrefs = appContext.getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
 
+    // A genuine downloaded song is always well over this size. Anything
+    // smaller means the download was actually a corrupt/error response that
+    // got saved by mistake (see downloadSong's own guard) — or an older
+    // download from before that guard existed. Treating it as "not
+    // downloaded" and cleaning it up here means the app self-heals instead
+    // of trying to hand a broken file to ExoPlayer and crashing.
+    private fun validLocalFileOrNull(songId: String): String? {
+        val path = _downloadedPaths.value[songId] ?: return null
+        val f = java.io.File(path)
+        if (f.exists() && f.length() >= 50_000L) return path
+        // Corrupt/missing — clean up so it stops being offered as "downloaded"
+        f.delete()
+        _downloadedIds.value = _downloadedIds.value - songId
+        _downloadedPaths.value = _downloadedPaths.value - songId
+        downloadsPrefs.edit()
+            .putStringSet("ids", _downloadedIds.value)
+            .remove("path_$songId")
+            .remove("meta_$songId")
+            .apply()
+        return null
+    }
+
     private fun restoreDownloads(): Set<String> =
         getApplication<Application>().getSharedPreferences("soundwave_downloads", Application.MODE_PRIVATE)
             .getStringSet("ids", emptySet()) ?: emptySet()
@@ -507,6 +529,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (connection.responseCode !in 200..299) {
                         throw java.io.IOException("Server returned HTTP ${connection.responseCode}")
                     }
+                    // Some CDNs return a 200 OK with a tiny HTML/JSON error body
+                    // instead of the actual audio when a signed URL is
+                    // rejected. Bail out early rather than saving that as a
+                    // "downloaded" song — it previously looked like a
+                    // successful 1-second download and then crashed/failed
+                    // to play, since it wasn't a real audio file.
+                    val contentType = connection.contentType ?: ""
+                    if (contentType.contains("text") || contentType.contains("json")) {
+                        throw java.io.IOException("Server returned $contentType instead of audio")
+                    }
                     connection.inputStream.use { input ->
                         targetFile.outputStream().use { output ->
                             input.copyTo(output, bufferSize = 8 * 1024)
@@ -514,6 +546,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 } finally {
                     connection.disconnect()
+                }
+
+                // A real song is at minimum tens of KB. Anything smaller is
+                // almost certainly a truncated/error response, not audio.
+                val minValidBytes = 50_000L
+                if (!targetFile.exists() || targetFile.length() < minValidBytes) {
+                    targetFile.delete()
+                    throw java.io.IOException(
+                        "Downloaded file was only ${targetFile.length()} bytes — not a valid audio file"
+                    )
                 }
                 targetFile
             }
@@ -540,11 +582,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val metaStr = downloadsPrefs.getString("meta_$id", null) ?: return@mapNotNull null
             try {
                 val song = jsonToSong(JSONObject(metaStr))
-                // Point streamUrl at local file so it plays offline
-                val localPath = _downloadedPaths.value[id]
-                if (localPath != null && java.io.File(localPath).exists()) {
-                    song.copy(streamUrl = "file://$localPath")
-                } else song
+                // Point streamUrl at local file so it plays offline. If the
+                // file is corrupt/too small, validLocalFileOrNull() removes
+                // it from tracking and returns null, so it drops out of the
+                // Downloads tab instead of sitting there as a broken entry.
+                val localPath = validLocalFileOrNull(id)
+                if (localPath != null) song.copy(streamUrl = "file://$localPath") else null
             } catch (e: Exception) { null }
         }
     }

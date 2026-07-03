@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashLogger()
+        showLastCrashIfAny()
         connectToPlaybackService()
 
         vm.controllerBridge = object : AppViewModel.ControllerBridge {
@@ -109,7 +111,14 @@ class MainActivity : ComponentActivity() {
 
                 c.setMediaItems(mediaItems, safeStartIndex, startPositionMs)
                 c.prepare()
-                if (wasPlaying) c.play()
+
+                // A brand new song was just tapped by the user — always start
+                // playing it, regardless of whether anything was playing before.
+                // Only fall back to "keep whatever state it had" when this call
+                // is a background refresh of the song that's already loaded
+                // (so we don't force-resume a song the user deliberately paused).
+                val shouldPlay = if (isSameSongAlreadyPlaying) wasPlaying else true
+                if (shouldPlay) c.play()
             }
             override fun togglePlayPause() {
                 val c = mediaController ?: return
@@ -137,6 +146,44 @@ class MainActivity : ComponentActivity() {
                 AppRoot(vm, onSignInClick = { launchGoogleSignIn() })
             }
         }
+    }
+
+    // Catches any crash the app has, saves the full stack trace to a file
+    // in app-private storage, then lets the OS handle it normally (so the
+    // crash dialog / process death still happens as usual). On the NEXT
+    // launch, showLastCrashIfAny() surfaces it. This exists because there's
+    // no Android Studio/adb Logcat available to inspect crashes directly —
+    // this makes the exact error visible on-device instead.
+    private fun installCrashLogger() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val sw = java.io.StringWriter()
+                throwable.printStackTrace(java.io.PrintWriter(sw))
+                java.io.File(filesDir, "last_crash.txt").writeText(sw.toString())
+            } catch (e: Exception) { /* best effort */ }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+    }
+
+    private fun showLastCrashIfAny() {
+        val crashFile = java.io.File(filesDir, "last_crash.txt")
+        if (!crashFile.exists()) return
+        val text = try { crashFile.readText() } catch (e: Exception) { "" }
+        crashFile.delete()
+        if (text.isBlank()) return
+
+        // Put the full trace on the clipboard so it can be pasted back to
+        // whoever's debugging this, and show the first line as a quick Toast.
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SoundWave crash log", text))
+        val firstLine = text.lineSequence().firstOrNull() ?: "Unknown error"
+        android.widget.Toast.makeText(
+            this,
+            "App crashed last time: $firstLine\n(Full trace copied to clipboard — paste it to debug)",
+            android.widget.Toast.LENGTH_LONG
+        ).show()
+        android.util.Log.e("SoundWaveCrash", text)
     }
 
     private fun connectToPlaybackService() {
