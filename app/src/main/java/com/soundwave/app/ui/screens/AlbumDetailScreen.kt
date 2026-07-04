@@ -33,7 +33,8 @@ fun AlbumDetailScreen(
     likedIds: Set<String>,
     onBack: () -> Unit,
     onPlay: (Song, List<Song>) -> Unit,
-    onLike: (Song) -> Unit
+    onLike: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit
 ) {
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -71,7 +72,8 @@ fun AlbumDetailScreen(
                         isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying,
                         isLiked = likedIds.contains(song.id),
                         onClick = { onPlay(song, songs) },
-                        onLikeClick = { onLike(song) }
+                        onLikeClick = { onLike(song) },
+                        onMoreClick = { onAddToPlaylist(song) }
                     )
                 }
                 item { Spacer(Modifier.height(100.dp)) }

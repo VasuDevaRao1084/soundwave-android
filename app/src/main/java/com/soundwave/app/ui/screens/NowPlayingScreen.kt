@@ -62,7 +62,8 @@ fun NowPlayingScreen(
     onCycleRepeat: () -> Unit,
     onToggleDownload: () -> Unit,
     onSetSleepTimer: (Int?) -> Unit,
-    onShowQueue: () -> Unit
+    onShowQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit
 ) {
     val context = LocalContext.current
     var primaryColor by remember(song.id) { mutableStateOf(SwPurple) }
@@ -242,6 +243,11 @@ fun NowPlayingScreen(
                     icon = Icons.Filled.Bedtime,
                     tint = if (sleepTimerMins != null) primaryColor else Color(0xFF4A4560),
                     onClick = { showSleepMenu = true }
+                )
+                ActionIcon(
+                    icon = Icons.Filled.PlaylistAdd,
+                    tint = Color(0xFF4A4560),
+                    onClick = onAddToPlaylist
                 )
             }
 

@@ -100,6 +100,30 @@ class MainActivity : ComponentActivity() {
                 if (mediaItems.isEmpty()) return
                 val safeStartIndex = startIndex.coerceIn(0, mediaItems.size - 1)
                 val c = mediaController ?: return
+                val targetMediaId = mediaItems[safeStartIndex].mediaId
+                val isSameSongAlreadyPlaying = c.currentMediaItem?.mediaId == targetMediaId
+
+                // Background queue-window refresh (autoPlay=false) for the song
+                // that's already loaded and playing: only insert the neighbor
+                // songs around it using incremental add/remove, and never touch
+                // the currently playing item itself. Calling setMediaItems()
+                // here — even with the same media ID and a restored position —
+                // still makes ExoPlayer tear down and reload the item, which is
+                // exactly what caused the audible stutter/pause a second or two
+                // into every song (the time it takes this background refresh to
+                // finish resolving). This path avoids that entirely.
+                if (!autoPlay && isSameSongAlreadyPlaying) {
+                    val currentIdx = c.currentMediaItemIndex
+                    val beforeItems = mediaItems.subList(0, safeStartIndex)
+                    val afterItems = mediaItems.subList(safeStartIndex + 1, mediaItems.size)
+                    if (currentIdx + 1 < c.mediaItemCount) c.removeMediaItems(currentIdx + 1, c.mediaItemCount)
+                    if (currentIdx > 0) c.removeMediaItems(0, currentIdx)
+                    // currently playing item is now at index 0, untouched and still playing
+                    if (afterItems.isNotEmpty()) c.addMediaItems(1, afterItems)
+                    if (beforeItems.isNotEmpty()) c.addMediaItems(0, beforeItems)
+                    return
+                }
+
                 val currentPos = c.currentPosition
                 val wasPlaying = c.isPlaying
 
@@ -109,8 +133,6 @@ class MainActivity : ComponentActivity() {
                 // new song starting). Otherwise this carries the OLD song's
                 // position onto the NEW song, making every new track start
                 // partway through instead of at 0 — that was the bug.
-                val targetMediaId = mediaItems[safeStartIndex].mediaId
-                val isSameSongAlreadyPlaying = c.currentMediaItem?.mediaId == targetMediaId
                 val startPositionMs = if (isSameSongAlreadyPlaying) currentPos.coerceAtLeast(0L) else 0L
 
                 c.setMediaItems(mediaItems, safeStartIndex, startPositionMs)
@@ -352,7 +374,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     al != null -> AlbumDetailScreen(
                         album = al, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
                         onBack = { openAlbum = null },
-                        onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) }
+                        onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) },
+                        onAddToPlaylist = { addToPlaylistSong = it }
                     )
                     showAlbumSearch -> AlbumSearchScreen(
                         savedAlbumIds = savedAlbums.map { it.id }.toSet(),
@@ -407,7 +430,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             onCreatePlaylist = { vm.createPlaylist(it) },
                             onDeletePlaylist = { vm.deletePlaylist(it.id) },
                             onRemoveAlbum = { vm.removeAlbum(it.id) },
-                            onSearchAlbums = { showAlbumSearch = true }
+                            onSearchAlbums = { showAlbumSearch = true },
+                            onAddToPlaylist = { addToPlaylistSong = it }
                         )
                     }
                 }
@@ -496,7 +520,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     onToggleShuffle = { vm.toggleShuffle() }, onCycleRepeat = { vm.cycleRepeat() },
                     onToggleDownload = { vm.toggleDownload(song) },
                     onSetSleepTimer = { vm.setSleepTimer(it) },
-                    onShowQueue = { showQueue = true }
+                    onShowQueue = { showQueue = true },
+                    onAddToPlaylist = { addToPlaylistSong = song }
                 )
             }
         }
