@@ -20,7 +20,7 @@ object ErrorLog {
     private const val KEY = "entries"
     private const val MAX_ENTRIES = 30
 
-    data class Entry(val timestamp: String, val tag: String, val message: String)
+    data class Entry(val time: String, val tag: String, val message: String)
 
     fun log(context: Context, tag: String, message: String, throwable: Throwable? = null) {
         try {

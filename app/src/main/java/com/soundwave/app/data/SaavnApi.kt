@@ -83,11 +83,13 @@ object SaavnApi {
         val results = json.optJSONObject("data")?.optJSONArray("results") ?: JSONArray()
         val songs = rankResults(parseSongsWithLanguage(results), query)
 
-        // If all results are instrumentals/covers with no proper English songs,
+        // If every result is an instrumental/cover version with nothing usable,
         // try JioSaavn's own website search directly (different backend/index
         // than the wrapper API, sometimes surfaces tracks the wrapper misses)
-        // before falling back to YouTube Music.
-        val hasGoodResult = songs.any { it.language == "english" && !it.looksLikeCover }
+        // before falling back to YouTube Music. This check is language-agnostic
+        // now — it used to only look for an English result specifically, which
+        // meant it could misfire for Hindi/Telugu/etc. searches.
+        val hasGoodResult = songs.any { it.language != "instrumental" && !it.looksLikeCover }
         if (!hasGoodResult && songs.all { it.language == "instrumental" || it.looksLikeCover }) {
             val directSongs = try { searchJioSaavnDirect(query) } catch (e: Exception) { emptyList() }
             if (directSongs.isNotEmpty()) return directSongs
@@ -98,27 +100,41 @@ object SaavnApi {
         return songs.map { it.song }
     }
 
-    private data class RankedSong(val song: Song, val language: String, val looksLikeCover: Boolean)
+    private data class RankedSong(val song: Song, val language: String, val looksLikeCover: Boolean, val playCount: Long)
 
-    private val coverArtistIndicators = listOf(
+    // Checked against title, artist, AND album — a cover/remix is very often
+    // labeled right in the song title itself ("Song Name (Cover)"), which the
+    // old version never checked at all (only artist/album).
+    private val coverIndicators = listOf(
         "tribute", "karaoke", "made famous by", "in the style of",
-        "originally performed", "covered by", "as made famous"
-    )
-    private val coverAlbumIndicators = listOf(
-        "tribute to", "karaoke", "made famous by", "in the style of",
-        "originally performed", "cover versions of"
+        "originally performed", "covered by", "as made famous",
+        "cover version", "cover)", "(cover", "- cover", "unplugged",
+        "acoustic version", "acoustic cover", "remix)", "(remix", "- remix",
+        "8d audio", "slowed", "reverb", "lofi", "lo-fi", "mashup",
+        "dj mix", "ringtone", "bgm version"
     )
 
     private fun rankResults(songs: List<RankedSong>, query: String): List<RankedSong> {
         val queryLower = query.trim().lowercase()
-        return songs.sortedByDescending { (song, language, looksLikeCover) ->
+        return songs.sortedByDescending { (song, _, looksLikeCover, playCount) ->
             val titleLower = song.title.lowercase()
             var score = 0
             if (titleLower == queryLower) score += 100
             else if (titleLower.startsWith(queryLower)) score += 50
             else if (titleLower.contains(queryLower)) score += 20
-            if (language == "english") score += 40
-            if (looksLikeCover) score -= 60
+
+            // Popularity signal: helps pick the real original over an obscure
+            // cover/re-upload when both happen to have the exact same title
+            // and text alone can't tell them apart. Log-scaled so one viral
+            // hit doesn't completely dominate, but a clearly more-played
+            // track still wins.
+            if (playCount > 0) score += (Math.log10(playCount.toDouble()) * 8).toInt()
+
+            // Covers/remixes/karaoke/lofi edits sink well below a plain match
+            // regardless of popularity — being a popular remix shouldn't beat
+            // the actual original song.
+            if (looksLikeCover) score -= 80
+
             score
         }
     }
@@ -133,9 +149,12 @@ object SaavnApi {
             val language = o.optString("language", "").lowercase()
             val albumLower = song.album?.lowercase() ?: ""
             val artistLower = song.artist.lowercase()
-            val looksLikeCover = coverArtistIndicators.any { artistLower.contains(it) } ||
-                coverAlbumIndicators.any { albumLower.contains(it) }
-            list.add(RankedSong(song, language, looksLikeCover))
+            val titleLower = song.title.lowercase()
+            val playCount = o.optLong("playCount", 0)
+            val looksLikeCover = coverIndicators.any {
+                artistLower.contains(it) || albumLower.contains(it) || titleLower.contains(it)
+            }
+            list.add(RankedSong(song, language, looksLikeCover, playCount))
         }
         return list
     }
