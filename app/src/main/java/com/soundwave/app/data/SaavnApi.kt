@@ -9,6 +9,8 @@ import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.TimeUnit
 
 data class Song(
@@ -176,9 +178,9 @@ object SaavnApi {
         // Autocomplete only returns basic info — fetch full details (language,
         // playCount, stream URL) for each candidate. Done in parallel so search
         // doesn't feel slow with ~10 sequential network round trips.
-        return kotlinx.coroutines.coroutineScope {
+        return coroutineScope {
             ids.map { id ->
-                kotlinx.coroutines.async {
+                async {
                     try {
                         val data = fetchDirectSongData(id) ?: return@async null
                         val song = buildSongFromDirectData(id, data) ?: return@async null
