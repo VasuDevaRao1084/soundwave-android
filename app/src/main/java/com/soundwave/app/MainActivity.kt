@@ -32,6 +32,7 @@ import com.soundwave.app.ui.components.AddToPlaylistSheet
 import com.soundwave.app.ui.components.MiniPlayer
 import com.soundwave.app.ui.screens.AlbumDetailScreen
 import com.soundwave.app.ui.screens.AlbumSearchScreen
+import com.soundwave.app.ui.screens.DiagnosticsScreen
 import com.soundwave.app.ui.screens.HomeScreen
 import com.soundwave.app.ui.screens.LibraryScreen
 import com.soundwave.app.ui.screens.LoginScreen
@@ -76,9 +77,12 @@ class MainActivity : ComponentActivity() {
 
         vm.controllerBridge = object : AppViewModel.ControllerBridge {
             override fun play(song: Song) {
-                playQueue(listOf(song), 0)
+                // Explicit user request to play this song — always start
+                // audio, whether it's brand new or the same song re-tapped
+                // while paused (e.g. the Home screen's "Jump Back In" card).
+                playQueue(listOf(song), 0, autoPlay = true)
             }
-            override fun playQueue(songs: List<Song>, startIndex: Int) {
+            override fun playQueue(songs: List<Song>, startIndex: Int, autoPlay: Boolean) {
                 val mediaItems = songs.mapNotNull { s ->
                     val url = s.streamUrl ?: return@mapNotNull null
                     MediaItem.Builder()
@@ -112,12 +116,13 @@ class MainActivity : ComponentActivity() {
                 c.setMediaItems(mediaItems, safeStartIndex, startPositionMs)
                 c.prepare()
 
-                // A brand new song was just tapped by the user — always start
-                // playing it, regardless of whether anything was playing before.
-                // Only fall back to "keep whatever state it had" when this call
-                // is a background refresh of the song that's already loaded
-                // (so we don't force-resume a song the user deliberately paused).
-                val shouldPlay = if (isSameSongAlreadyPlaying) wasPlaying else true
+                // autoPlay=true means this came from an explicit play() request
+                // (the user tapped something) — always start playing, even if
+                // it's the same song that's currently paused. autoPlay=false
+                // means this is the silent background queue-window refresh, so
+                // just keep whatever play/pause state already existed instead
+                // of forcing a change the user didn't ask for.
+                val shouldPlay = if (autoPlay) true else wasPlaying
                 if (shouldPlay) c.play()
             }
             override fun togglePlayPause() {
@@ -161,6 +166,7 @@ class MainActivity : ComponentActivity() {
                 val sw = java.io.StringWriter()
                 throwable.printStackTrace(java.io.PrintWriter(sw))
                 java.io.File(filesDir, "last_crash.txt").writeText(sw.toString())
+                com.soundwave.app.data.ErrorLog.log(this, "CRASH", sw.toString().take(500))
             } catch (e: Exception) { /* best effort */ }
             defaultHandler?.uncaughtException(thread, throwable)
         }
@@ -229,6 +235,7 @@ class MainActivity : ComponentActivity() {
                     // (403 Forbidden, 404 Not Found, unsupported format, network timeout, etc.)
                     val msg = "Playback error: ${error.errorCodeName} — ${error.message}"
                     android.util.Log.e("SoundWavePlayback", msg, error)
+                    com.soundwave.app.data.ErrorLog.log(this@MainActivity, "PLAYBACK", msg)
                     android.widget.Toast.makeText(this@MainActivity, msg, android.widget.Toast.LENGTH_LONG).show()
                 }
             })
@@ -313,6 +320,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var openAlbum by remember { mutableStateOf<SavedAlbum?>(null) }
     var showAlbumSearch by remember { mutableStateOf(false) }
     var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
+    var showDiagnostics by remember { mutableStateOf(false) }
 
     val likedIds = remember(likedSongs) { likedSongs.map { it.id }.toSet() }
 
@@ -351,6 +359,19 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         onBack = { showAlbumSearch = false },
                         onSaveAlbum = { vm.saveAlbum(it); showAlbumSearch = false }
                     )
+                    showDiagnostics -> {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        DiagnosticsScreen(
+                            entries = remember(showDiagnostics) { com.soundwave.app.data.ErrorLog.getAll(context) },
+                            onBack = { showDiagnostics = false },
+                            onCopyAll = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SoundWave diagnostics", com.soundwave.app.data.ErrorLog.asPlainText(context)))
+                                android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            onClear = { com.soundwave.app.data.ErrorLog.clear(context); showDiagnostics = false }
+                        )
+                    }
                     else -> when (tab) {
                         Tab.HOME -> HomeScreen(
                             user = user, recentlyPlayed = recentlyPlayed,
@@ -362,7 +383,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             onPlay = { vm.playSong(it, recentlyPlayed) },
                             onLike = { vm.toggleLike(it) },
                             onSearchAlbums = { showAlbumSearch = true },
-                            onOpenAlbum = { openAlbum = it }
+                            onOpenAlbum = { openAlbum = it },
+                            onOpenDiagnostics = { showDiagnostics = true }
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbums.map { it.id }.toSet(),

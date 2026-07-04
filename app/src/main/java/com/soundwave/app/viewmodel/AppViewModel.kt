@@ -119,7 +119,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var controllerBridge: ControllerBridge? = null
     interface ControllerBridge {
         fun play(song: Song)
-        fun playQueue(songs: List<Song>, startIndex: Int)
+        fun playQueue(songs: List<Song>, startIndex: Int, autoPlay: Boolean = false)
         fun togglePlayPause()
         fun seekTo(seconds: Float)
         fun pause()
@@ -328,6 +328,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 controllerBridge?.playQueue(resolvedWindow, relativeStartIndex)
             } catch (e: Exception) {
                 android.util.Log.e("SoundWave", "Queue window resolution failed (non-fatal)", e)
+                com.soundwave.app.data.ErrorLog.log(appContext, "QUEUE", "Window resolution failed: ${e.message}")
             }
         }
     }
@@ -589,6 +590,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .apply()
         } catch (e: Exception) {
             android.util.Log.e("SoundWave", "Download failed for ${song.title}", e)
+            com.soundwave.app.data.ErrorLog.log(appContext, "DOWNLOAD", "Failed for \"${song.title}\": ${e.message}")
             _playbackError.value = "Download failed for \"${song.title}\""
         } finally {
             _downloadingIds.value = _downloadingIds.value - song.id

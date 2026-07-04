@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,7 +55,8 @@ fun HomeScreen(
     onPlay: (Song) -> Unit,
     onLike: (Song) -> Unit,
     onSearchAlbums: () -> Unit,
-    onOpenAlbum: (SavedAlbum) -> Unit
+    onOpenAlbum: (SavedAlbum) -> Unit,
+    onOpenDiagnostics: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SwBg),
@@ -73,11 +75,17 @@ fun HomeScreen(
             Spacer(Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 20.dp)
+                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth()
             ) {
                 Icon(Icons.Filled.Refresh, contentDescription = null, tint = SwPurple, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("All devices synced", color = SwPurple, fontSize = 13.sp)
+                Text("All devices synced", color = SwPurple, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Icon(
+                    Icons.Filled.BugReport,
+                    contentDescription = "Diagnostics",
+                    tint = SwTextTertiary,
+                    modifier = Modifier.size(18.dp).clickable(onClick = onOpenDiagnostics)
+                )
             }
             Spacer(Modifier.height(20.dp))
         }
