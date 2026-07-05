@@ -9,8 +9,6 @@ import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.TimeUnit
 
 data class Song(
@@ -166,37 +164,59 @@ object SaavnApi {
         return Song(songId, title, artist, album.ifBlank { null }, image, durationSec, streamUrl, "saavn")
     }
 
+    // Verified live against the real endpoint (2026-07-04): search.getResults
+    // returns up to `n` full results in ONE call, each with language, play_count,
+    // and more_info.encrypted_media_url already included — no need for the old
+    // N+1 pattern (autocomplete.get for candidates, then a separate
+    // song.getDetails call per candidate). Faster and returns far more results
+    // (previously capped around 5-10 via autocomplete, now up to 30).
     private suspend fun searchJioSaavnDirectRanked(query: String): List<RankedSong> {
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-        val url = "$JIOSAAVN_DIRECT_BASE?__call=autocomplete.get&_format=json&_marker=0&cc=in&includeMetaTags=1&query=$encoded"
+        val url = "$JIOSAAVN_DIRECT_BASE?__call=search.getResults&q=$encoded&p=1&n=30&_format=json&_marker=0&api_version=4&ctx=wap6dot0"
         val json = getJson(url)
-        val songResults = json.optJSONObject("songs")?.optJSONArray("data") ?: JSONArray()
-        val ids = (0 until songResults.length()).mapNotNull { i ->
-            songResults.optJSONObject(i)?.optString("id")?.takeIf { it.isNotBlank() }
+        val results = json.optJSONArray("results") ?: JSONArray()
+
+        val list = mutableListOf<RankedSong>()
+        for (i in 0 until results.length()) {
+            val o = results.optJSONObject(i) ?: continue
+            val song = buildSongFromSearchResult(o) ?: continue
+            val language = o.optString("language", "").lowercase()
+            val playCount = o.optString("play_count", "0").toLongOrNull() ?: 0L
+            val titleLower = song.title.lowercase()
+            val artistLower = song.artist.lowercase()
+            val albumLower = song.album?.lowercase() ?: ""
+            val looksLikeCover = coverIndicators.any {
+                artistLower.contains(it) || albumLower.contains(it) || titleLower.contains(it)
+            }
+            list.add(RankedSong(song, language, looksLikeCover, playCount))
+        }
+        return list
+    }
+
+    /** Parses search.getResults' per-song shape — different from song.getDetails: media info lives under "more_info" and artists under "more_info.artistMap.primary_artists". */
+    private fun buildSongFromSearchResult(o: JSONObject): Song? {
+        val id = o.optString("id").takeIf { it.isNotBlank() } ?: return null
+        val title = htmlDecode(o.optString("title", ""))
+        val moreInfo = o.optJSONObject("more_info") ?: return null
+
+        val primaryArtists = moreInfo.optJSONObject("artistMap")?.optJSONArray("primary_artists")
+        val artist = if (primaryArtists != null && primaryArtists.length() > 0) {
+            (0 until primaryArtists.length()).joinToString(", ") {
+                primaryArtists.optJSONObject(it)?.optString("name") ?: ""
+            }
+        } else "Unknown Artist"
+
+        val album = htmlDecode(moreInfo.optString("album", ""))
+        val image = o.optString("image", "").replace("150x150", "500x500")
+        val durationSec = moreInfo.optString("duration", "0").toIntOrNull() ?: 0
+
+        val encryptedUrl = moreInfo.optString("encrypted_media_url", "").takeIf { it.isNotBlank() } ?: return null
+        var streamUrl = try { decryptJioSaavnUrl(encryptedUrl) } catch (e: Exception) { null } ?: return null
+        if (moreInfo.optString("320kbps") != "true") {
+            streamUrl = streamUrl.replace("_320.mp4", "_160.mp4")
         }
 
-        // Autocomplete only returns basic info — fetch full details (language,
-        // playCount, stream URL) for each candidate. Done in parallel so search
-        // doesn't feel slow with ~10 sequential network round trips.
-        return coroutineScope {
-            ids.map { id ->
-                async {
-                    try {
-                        val data = fetchDirectSongData(id) ?: return@async null
-                        val song = buildSongFromDirectData(id, data) ?: return@async null
-                        val language = data.optString("language", "").lowercase()
-                        val playCount = data.optLong("play_count", 0)
-                        val titleLower = song.title.lowercase()
-                        val artistLower = song.artist.lowercase()
-                        val albumLower = song.album?.lowercase() ?: ""
-                        val looksLikeCover = coverIndicators.any {
-                            artistLower.contains(it) || albumLower.contains(it) || titleLower.contains(it)
-                        }
-                        RankedSong(song, language, looksLikeCover, playCount)
-                    } catch (e: Exception) { null }
-                }
-            }.mapNotNull { it.await() }
-        }
+        return Song(id, title, artist, album.ifBlank { null }, image, durationSec, streamUrl, "saavn")
     }
 
     suspend fun getSongById(id: String): Song? {
