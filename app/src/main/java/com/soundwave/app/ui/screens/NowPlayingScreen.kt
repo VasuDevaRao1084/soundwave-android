@@ -63,7 +63,8 @@ fun NowPlayingScreen(
     onToggleDownload: () -> Unit,
     onSetSleepTimer: (Int?) -> Unit,
     onShowQueue: () -> Unit,
-    onAddToPlaylist: () -> Unit
+    onAddToPlaylist: () -> Unit,
+    onOpenSoundSettings: () -> Unit
 ) {
     val context = LocalContext.current
     var primaryColor by remember(song.id) { mutableStateOf(SwPurple) }
@@ -131,9 +132,15 @@ fun NowPlayingScreen(
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 2.sp
                 )
-                IconButton(onClick = onShowQueue) {
-                    Icon(Icons.Filled.QueueMusic, contentDescription = "Queue",
-                        tint = Color(0xFF6B6080), modifier = Modifier.size(22.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onOpenSoundSettings) {
+                        Icon(Icons.Filled.Tune, contentDescription = "Sound settings",
+                            tint = Color(0xFF6B6080), modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onShowQueue) {
+                        Icon(Icons.Filled.QueueMusic, contentDescription = "Queue",
+                            tint = Color(0xFF6B6080), modifier = Modifier.size(22.dp))
+                    }
                 }
             }
 

@@ -104,6 +104,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val sleepTimerMins: StateFlow<Int?> = _sleepTimerMins.asStateFlow()
     private var sleepTimerJob: kotlinx.coroutines.Job? = null
 
+    // ── Sound settings (quality, EQ toggle, smooth transitions) ──────────────
+    private val soundPrefs = appContext.getSharedPreferences("soundwave_sound_settings", Application.MODE_PRIVATE)
+
+    private val _smoothTransitionsEnabled = MutableStateFlow(soundPrefs.getBoolean("smoothTransitions", true))
+    val smoothTransitionsEnabled: StateFlow<Boolean> = _smoothTransitionsEnabled.asStateFlow()
+    fun setSmoothTransitions(enabled: Boolean) {
+        _smoothTransitionsEnabled.value = enabled
+        soundPrefs.edit().putBoolean("smoothTransitions", enabled).apply()
+    }
+
+    enum class AudioQuality(val kbps: Int, val label: String) {
+        DATA_SAVER(96, "Data Saver"),
+        NORMAL(160, "Normal"),
+        HIGH(320, "High")
+    }
+
+    private val _audioQuality = MutableStateFlow(
+        AudioQuality.values().firstOrNull { it.kbps == soundPrefs.getInt("qualityKbps", 320) } ?: AudioQuality.HIGH
+    )
+    val audioQuality: StateFlow<AudioQuality> = _audioQuality.asStateFlow()
+    fun setAudioQuality(quality: AudioQuality) {
+        _audioQuality.value = quality
+        SaavnApi.preferredQualityKbps = quality.kbps
+        soundPrefs.edit().putInt("qualityKbps", quality.kbps).apply()
+    }
+
+    init {
+        // Apply the saved quality preference to SaavnApi immediately, since
+        // it's a plain object property (not itself persisted) that needs to
+        // be set once at startup to match whatever the user chose last time.
+        SaavnApi.preferredQualityKbps = _audioQuality.value.kbps
+    }
+
     private val _downloadedIds = MutableStateFlow<Set<String>>(restoreDownloads())
     val downloadedIds: StateFlow<Set<String>> = _downloadedIds.asStateFlow()
     // Maps song ID → absolute path of the locally downloaded audio file

@@ -138,6 +138,27 @@ object SaavnApi {
     // third-party wrapper/proxy involved, so no independent rate limits to
     // worry about beyond JioSaavn's own service.
 
+    /**
+     * User's preferred audio quality in kbps: 96 (Data Saver), 160 (Normal), or
+     * 320 (High). JioSaavn's stream URLs encode bitrate directly in the
+     * filename (e.g. "..._320.mp4"), so this is a real quality selection, not
+     * just a label — a 96kbps stream is genuinely a smaller/lower-fidelity
+     * file than 320kbps, useful for saving mobile data.
+     *
+     * Global on the object rather than threaded through every call site,
+     * since it's an app-wide setting updated in one place (Settings) and read
+     * from many (search, getSongById, album songs).
+     */
+    var preferredQualityKbps: Int = 320
+
+    /** Downgrades a decrypted stream URL to the lower of (user preference, what the server actually has available). Never upgrades past what's genuinely available. */
+    private fun applyQualityPreference(url: String, serverHas320: Boolean): String {
+        val availableKbps = if (serverHas320) 320 else 160
+        val effectiveKbps = minOf(preferredQualityKbps, availableKbps)
+        if (effectiveKbps == availableKbps) return url // no change needed
+        return url.replace(Regex("_\\d+\\.mp4"), "_${effectiveKbps}.mp4")
+    }
+
     /** Raw per-song JSON from song.getDetails, keyed by song ID. */
     private suspend fun fetchDirectSongData(songId: String): JSONObject? {
         val url = "$JIOSAAVN_DIRECT_BASE?__call=song.getDetails&cc=in&_marker=0&_format=json&pids=$songId"
@@ -155,11 +176,7 @@ object SaavnApi {
 
         val encryptedUrl = data.optString("encrypted_media_url", "").takeIf { it.isNotBlank() } ?: return null
         var streamUrl = try { decryptJioSaavnUrl(encryptedUrl) } catch (e: Exception) { null } ?: return null
-
-        // Use 320kbps if available, otherwise the decrypted URL's default quality
-        if (data.optString("320kbps") != "true") {
-            streamUrl = streamUrl.replace("_320.mp4", "_160.mp4")
-        }
+        streamUrl = applyQualityPreference(streamUrl, data.optString("320kbps") == "true")
 
         return Song(songId, title, artist, album.ifBlank { null }, image, durationSec, streamUrl, "saavn")
     }
@@ -212,9 +229,7 @@ object SaavnApi {
 
         val encryptedUrl = moreInfo.optString("encrypted_media_url", "").takeIf { it.isNotBlank() } ?: return null
         var streamUrl = try { decryptJioSaavnUrl(encryptedUrl) } catch (e: Exception) { null } ?: return null
-        if (moreInfo.optString("320kbps") != "true") {
-            streamUrl = streamUrl.replace("_320.mp4", "_160.mp4")
-        }
+        streamUrl = applyQualityPreference(streamUrl, moreInfo.optString("320kbps") == "true")
 
         return Song(id, title, artist, album.ifBlank { null }, image, durationSec, streamUrl, "saavn")
     }

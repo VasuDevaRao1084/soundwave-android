@@ -33,6 +33,7 @@ import com.soundwave.app.ui.components.MiniPlayer
 import com.soundwave.app.ui.screens.AlbumDetailScreen
 import com.soundwave.app.ui.screens.AlbumSearchScreen
 import com.soundwave.app.ui.screens.DiagnosticsScreen
+import com.soundwave.app.ui.screens.SoundSettingsScreen
 import com.soundwave.app.ui.screens.HomeScreen
 import com.soundwave.app.ui.screens.LibraryScreen
 import com.soundwave.app.ui.screens.LoginScreen
@@ -283,8 +284,27 @@ class MainActivity : ComponentActivity() {
                         val position = c.currentPosition.takeIf { it >= 0 } ?: 0L
                         vm.updateProgress(position / 1000f, effectiveDuration)
                     }
+
+                    // Smooth transition: gently lowers volume in the last few
+                    // seconds of a track and restores it once the next one
+                    // starts, instead of an abrupt cut. This ONLY ever reads/
+                    // sets c.volume — it never touches the queue, position, or
+                    // play/pause state, so it can't affect any of the playback
+                    // fixes already in place. Fully skipped if the setting is off.
+                    if (vm.smoothTransitionsEnabled.value && exoDuration > 0 && c.isPlaying) {
+                        val fadeWindowMs = 3000L
+                        val remainingMs = exoDuration - c.currentPosition
+                        if (remainingMs in 0..fadeWindowMs) {
+                            val target = (remainingMs.toFloat() / fadeWindowMs).coerceIn(0f, 1f)
+                            if (kotlin.math.abs(c.volume - target) > 0.02f) c.volume = target
+                        } else if (c.volume < 1f) {
+                            // Ramp back up — after a transition, or if the user
+                            // seeked away from the end mid-fade.
+                            c.volume = (c.volume + 0.08f).coerceAtMost(1f)
+                        }
+                    }
                 }
-                delay(500)
+                delay(200)
             }
         }
     }
@@ -304,6 +324,8 @@ private enum class Tab { HOME, SEARCH, LIBRARY, ALBUMS }
 @Composable
 private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val user by vm.user.collectAsState()
+    val audioQuality by vm.audioQuality.collectAsState()
+    val smoothTransitionsEnabled by vm.smoothTransitionsEnabled.collectAsState()
     val currentSong by vm.currentSong.collectAsState()
     val isPlaying by vm.isPlaying.collectAsState()
     val queue by vm.queue.collectAsState()
@@ -343,6 +365,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var showAlbumSearch by remember { mutableStateOf(false) }
     var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
     var showDiagnostics by remember { mutableStateOf(false) }
+    var showSoundSettings by remember { mutableStateOf(false) }
 
     val likedIds = remember(likedSongs) { likedSongs.map { it.id }.toSet() }
 
@@ -395,6 +418,13 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             onClear = { com.soundwave.app.data.ErrorLog.clear(context); showDiagnostics = false }
                         )
                     }
+                    showSoundSettings -> SoundSettingsScreen(
+                        audioQuality = audioQuality,
+                        onSetAudioQuality = { vm.setAudioQuality(it) },
+                        smoothTransitionsEnabled = smoothTransitionsEnabled,
+                        onSetSmoothTransitions = { vm.setSmoothTransitions(it) },
+                        onBack = { showSoundSettings = false }
+                    )
                     else -> when (tab) {
                         Tab.HOME -> HomeScreen(
                             user = user, recentlyPlayed = recentlyPlayed,
@@ -521,7 +551,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     onToggleDownload = { vm.toggleDownload(song) },
                     onSetSleepTimer = { vm.setSleepTimer(it) },
                     onShowQueue = { showQueue = true },
-                    onAddToPlaylist = { addToPlaylistSong = song }
+                    onAddToPlaylist = { addToPlaylistSong = song },
+                    onOpenSoundSettings = { showSoundSettings = true }
                 )
             }
         }

@@ -22,6 +22,24 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         player = ExoPlayer.Builder(this).build()
+        com.soundwave.app.audio.AudioEffectsManager.init(this)
+
+        // Attach EQ/BassBoost/Volume Boost the moment ExoPlayer allocates a real
+        // audio session. This uses AnalyticsListener, which is purely observational
+        // — it cannot affect playback, timing, or any of the Player.Listener logic
+        // that already runs in MainActivity.
+        player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onAudioSessionIdChanged(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                audioSessionId: Int
+            ) {
+                try {
+                    com.soundwave.app.audio.AudioEffectsManager.attachToSession(this@PlaybackService, audioSessionId)
+                } catch (e: Exception) {
+                    android.util.Log.e("SoundWave", "Failed to attach audio effects (non-fatal)", e)
+                }
+            }
+        })
 
         val sessionActivityIntent = packageManager.getLaunchIntentForPackage(packageName)
         val pendingIntent = PendingIntent.getActivity(
@@ -57,6 +75,7 @@ class PlaybackService : MediaSessionService() {
     fun getPlayer(): ExoPlayer = player
 
     override fun onDestroy() {
+        com.soundwave.app.audio.AudioEffectsManager.releaseEffects()
         mediaSession?.run {
             player.release()
             release()
