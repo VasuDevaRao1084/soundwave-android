@@ -77,12 +77,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // Populated from JioSaavn's real play_count field, sorted by actual
     // popularity — not curated by us, not random, genuinely the most-played
     // matching results JioSaavn's own catalog returns for each language.
+    private object PlaylistTokens {
+        const val TOP_TELUGU = "4O6DwO-qteN613W6L-cCSw__"
+        const val TOP_HINDI = "zlJfJYVuyjpxWb5,FqsjKg__"
+        const val TOP_ENGLISH = "aXoCADwITrUCObrEMJSxEw__"
+        const val MOST_SEARCHED_TELUGU = "OEvOb-ZbGV-uCJW60TJk1Q__"
+        const val MOST_SEARCHED_HINDI = "csv-SfcHUmHc1EngHtQQ2g__"
+        const val MOST_SEARCHED_ENGLISH = "xUOBWZUG6AgGSw2I1RxdhQ__"
+    }
+
     private val _topTelugu = MutableStateFlow<List<Song>>(emptyList())
     val topTelugu: StateFlow<List<Song>> = _topTelugu.asStateFlow()
     private val _topHindi = MutableStateFlow<List<Song>>(emptyList())
     val topHindi: StateFlow<List<Song>> = _topHindi.asStateFlow()
     private val _topEnglish = MutableStateFlow<List<Song>>(emptyList())
     val topEnglish: StateFlow<List<Song>> = _topEnglish.asStateFlow()
+
+    private val _mostSearchedTelugu = MutableStateFlow<List<Song>>(emptyList())
+    val mostSearchedTelugu: StateFlow<List<Song>> = _mostSearchedTelugu.asStateFlow()
+    private val _mostSearchedHindi = MutableStateFlow<List<Song>>(emptyList())
+    val mostSearchedHindi: StateFlow<List<Song>> = _mostSearchedHindi.asStateFlow()
+    private val _mostSearchedEnglish = MutableStateFlow<List<Song>>(emptyList())
+    val mostSearchedEnglish: StateFlow<List<Song>> = _mostSearchedEnglish.asStateFlow()
 
     // ── Mood playlists ─────────────────────────────────────────────────────────
     // Tapping a mood chip opens a real song list (like a playlist), not a
@@ -112,18 +128,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadTopCharts() {
         viewModelScope.launch {
-            try { _topTelugu.value = SaavnApi.getTopSongsByLanguage("telugu") } catch (e: Exception) {
+            try { _topTelugu.value = SaavnApi.getPlaylistSongs(PlaylistTokens.TOP_TELUGU) } catch (e: Exception) {
                 com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Telugu chart load failed: ${e.message}")
             }
         }
         viewModelScope.launch {
-            try { _topHindi.value = SaavnApi.getTopSongsByLanguage("hindi") } catch (e: Exception) {
+            try { _topHindi.value = SaavnApi.getPlaylistSongs(PlaylistTokens.TOP_HINDI) } catch (e: Exception) {
                 com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Hindi chart load failed: ${e.message}")
             }
         }
         viewModelScope.launch {
-            try { _topEnglish.value = SaavnApi.getTopSongsByLanguage("english") } catch (e: Exception) {
+            try { _topEnglish.value = SaavnApi.getPlaylistSongs(PlaylistTokens.TOP_ENGLISH) } catch (e: Exception) {
                 com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "English chart load failed: ${e.message}")
+            }
+        }
+        viewModelScope.launch {
+            try { _mostSearchedTelugu.value = SaavnApi.getPlaylistSongs(PlaylistTokens.MOST_SEARCHED_TELUGU) } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Most searched Telugu load failed: ${e.message}")
+            }
+        }
+        viewModelScope.launch {
+            try { _mostSearchedHindi.value = SaavnApi.getPlaylistSongs(PlaylistTokens.MOST_SEARCHED_HINDI) } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Most searched Hindi load failed: ${e.message}")
+            }
+        }
+        viewModelScope.launch {
+            try { _mostSearchedEnglish.value = SaavnApi.getPlaylistSongs(PlaylistTokens.MOST_SEARCHED_ENGLISH) } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Most searched English load failed: ${e.message}")
             }
         }
     }

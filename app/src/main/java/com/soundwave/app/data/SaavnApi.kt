@@ -343,6 +343,27 @@ object SaavnApi {
         return list
     }
 
+    // ── Curated playlists (real JioSaavn editorial playlists) ─────────────────
+    // Verified live (2026-07-06) against webapi.get?type=playlist&token=...
+    // Same "songs" array shape as content.getAlbumDetails (song.getDetails'
+    // per-song object), so buildSongFromDirectData parses it directly — no
+    // separate parser needed. This is JioSaavn's own hand-picked chart, not a
+    // reconstructed keyword search, so it has the full 50 songs (including
+    // thin catalogs like English) instead of whatever a text search happens
+    // to surface.
+    suspend fun getPlaylistSongs(token: String): List<Song> {
+        val url = "$JIOSAAVN_DIRECT_BASE?__call=webapi.get&type=playlist&token=$token&ctx=web6dot0&_format=json&_marker=0&p=1&n=50"
+        val json = getJson(url)
+        val results = json.optJSONArray("songs") ?: JSONArray()
+        val list = mutableListOf<Song>()
+        for (i in 0 until results.length()) {
+            val o = results.optJSONObject(i) ?: continue
+            val songId = o.optString("id").takeIf { it.isNotBlank() } ?: continue
+            buildSongFromDirectData(songId, o)?.let { list.add(it) }
+        }
+        return list
+    }
+
     /**
      * Decrypts JioSaavn's encrypted_media_url field.
      * Algorithm: DES/ECB/PKCS5Padding with the fixed key "38346591"

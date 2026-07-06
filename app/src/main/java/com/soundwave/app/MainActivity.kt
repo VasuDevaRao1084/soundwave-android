@@ -328,6 +328,9 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val topTelugu by vm.topTelugu.collectAsState()
     val topHindi by vm.topHindi.collectAsState()
     val topEnglish by vm.topEnglish.collectAsState()
+    val mostSearchedTelugu by vm.mostSearchedTelugu.collectAsState()
+    val mostSearchedHindi by vm.mostSearchedHindi.collectAsState()
+    val mostSearchedEnglish by vm.mostSearchedEnglish.collectAsState()
     val moodPlaylist by vm.moodPlaylist.collectAsState()
     val audioQuality by vm.audioQuality.collectAsState()
     val smoothTransitionsEnabled by vm.smoothTransitionsEnabled.collectAsState()
@@ -480,6 +483,9 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             topTelugu = topTelugu,
                             topHindi = topHindi,
                             topEnglish = topEnglish,
+                            mostSearchedTelugu = mostSearchedTelugu,
+                            mostSearchedHindi = mostSearchedHindi,
+                            mostSearchedEnglish = mostSearchedEnglish,
                             currentSongId = currentSong?.id,
                             isAudioPlaying = isPlaying,
                             likedIds = likedIds,

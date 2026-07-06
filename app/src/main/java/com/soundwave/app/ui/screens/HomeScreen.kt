@@ -63,6 +63,9 @@ fun HomeScreen(
     topTelugu: List<Song>,
     topHindi: List<Song>,
     topEnglish: List<Song>,
+    mostSearchedTelugu: List<Song>,
+    mostSearchedHindi: List<Song>,
+    mostSearchedEnglish: List<Song>,
     currentSongId: String?,
     isAudioPlaying: Boolean,
     likedIds: Set<String>,
@@ -217,7 +220,10 @@ fun HomeScreen(
         listOf(
             Triple("Top Telugu", "🔥", topTelugu),
             Triple("Top Hindi", "🔥", topHindi),
-            Triple("Top English", "🔥", topEnglish)
+            Triple("Top English", "🔥", topEnglish),
+            Triple("Most Searched Telugu", "🔎", mostSearchedTelugu),
+            Triple("Most Searched Hindi", "🔎", mostSearchedHindi),
+            Triple("Most Searched English", "🔎", mostSearchedEnglish)
         ).forEach { (title, emoji, songs) ->
             if (songs.isNotEmpty()) {
                 item {
