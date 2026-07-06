@@ -27,6 +27,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // If a session was restored from disk, load their library immediately
         _user.value?.let { loadUserData(it.id) }
+        loadTopCharts()
     }
 
     private fun restoreUser(): UserProfile? {
@@ -72,6 +73,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // just frequency-weighted artist affinity, refreshed as they listen.
     private val _recommendedSongs = MutableStateFlow<List<Song>>(emptyList())
     val recommendedSongs: StateFlow<List<Song>> = _recommendedSongs.asStateFlow()
+
+    // ── Top charts by language ────────────────────────────────────────────────
+    // Populated from JioSaavn's real play_count field, sorted by actual
+    // popularity — not curated by us, not random, genuinely the most-played
+    // matching results JioSaavn's own catalog returns for each language.
+    private val _topTelugu = MutableStateFlow<List<Song>>(emptyList())
+    val topTelugu: StateFlow<List<Song>> = _topTelugu.asStateFlow()
+    private val _topHindi = MutableStateFlow<List<Song>>(emptyList())
+    val topHindi: StateFlow<List<Song>> = _topHindi.asStateFlow()
+    private val _topEnglish = MutableStateFlow<List<Song>>(emptyList())
+    val topEnglish: StateFlow<List<Song>> = _topEnglish.asStateFlow()
+
+    private fun loadTopCharts() {
+        viewModelScope.launch {
+            try { _topTelugu.value = SaavnApi.getTopSongsByLanguage("telugu") } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Telugu chart load failed: ${e.message}")
+            }
+        }
+        viewModelScope.launch {
+            try { _topHindi.value = SaavnApi.getTopSongsByLanguage("hindi") } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Hindi chart load failed: ${e.message}")
+            }
+        }
+        viewModelScope.launch {
+            try { _topEnglish.value = SaavnApi.getTopSongsByLanguage("english") } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "English chart load failed: ${e.message}")
+            }
+        }
+    }
     private val artistPlayCounts = mutableMapOf<String, Int>()
     private var lastRecommendationRefresh = 0L
 

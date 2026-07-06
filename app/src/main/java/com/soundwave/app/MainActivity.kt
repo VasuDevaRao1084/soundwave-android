@@ -324,6 +324,9 @@ private enum class Tab { HOME, SEARCH, LIBRARY, ALBUMS }
 @Composable
 private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val user by vm.user.collectAsState()
+    val topTelugu by vm.topTelugu.collectAsState()
+    val topHindi by vm.topHindi.collectAsState()
+    val topEnglish by vm.topEnglish.collectAsState()
     val audioQuality by vm.audioQuality.collectAsState()
     val smoothTransitionsEnabled by vm.smoothTransitionsEnabled.collectAsState()
     val currentSong by vm.currentSong.collectAsState()
@@ -366,6 +369,20 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var showSoundSettings by remember { mutableStateOf(false) }
+
+    // Switching bottom-nav tabs should always take you to that tab's content —
+    // any currently-open overlay screen (Sound Settings, Diagnostics, Album
+    // Search, an opened Album/Playlist) needs to be dismissed first, otherwise
+    // the content `when` block below keeps showing the overlay regardless of
+    // which tab is selected, since those checks run before the tab check.
+    fun goToTab(t: Tab) {
+        showSoundSettings = false
+        showDiagnostics = false
+        showAlbumSearch = false
+        openAlbum = null
+        openPlaylist = null
+        tab = t
+    }
 
     val likedIds = remember(likedSongs) { likedSongs.map { it.id }.toSet() }
 
@@ -433,6 +450,9 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             user = user, recentlyPlayed = recentlyPlayed,
                             savedAlbums = savedAlbums,
                             recommendedSongs = recommendedSongs,
+                            topTelugu = topTelugu,
+                            topHindi = topHindi,
+                            topEnglish = topEnglish,
                             currentSongId = currentSong?.id,
                             isAudioPlaying = isPlaying,
                             likedIds = likedIds,
@@ -440,7 +460,11 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             onLike = { vm.toggleLike(it) },
                             onSearchAlbums = { showAlbumSearch = true },
                             onOpenAlbum = { openAlbum = it },
-                            onOpenDiagnostics = { showDiagnostics = true }
+                            onOpenDiagnostics = { showDiagnostics = true },
+                            onMoodClick = { moodQuery ->
+                                query = moodQuery
+                                goToTab(Tab.SEARCH)
+                            }
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbums.map { it.id }.toSet(),
@@ -487,7 +511,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                 tonalElevation = 0.dp
             ) {
                 NavigationBarItem(
-                    selected = tab == Tab.HOME, onClick = { tab = Tab.HOME },
+                    selected = tab == Tab.HOME, onClick = { goToTab(Tab.HOME) },
                     icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
                     label = { Text("Home") },
                     colors = NavigationBarItemDefaults.colors(
@@ -497,7 +521,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     )
                 )
                 NavigationBarItem(
-                    selected = tab == Tab.SEARCH, onClick = { tab = Tab.SEARCH },
+                    selected = tab == Tab.SEARCH, onClick = { goToTab(Tab.SEARCH) },
                     icon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
                     label = { Text("Search") },
                     colors = NavigationBarItemDefaults.colors(
@@ -507,7 +531,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     )
                 )
                 NavigationBarItem(
-                    selected = tab == Tab.LIBRARY, onClick = { tab = Tab.LIBRARY },
+                    selected = tab == Tab.LIBRARY, onClick = { goToTab(Tab.LIBRARY) },
                     icon = { Icon(Icons.Filled.LibraryMusic, contentDescription = "Library") },
                     label = { Text("Library") },
                     colors = NavigationBarItemDefaults.colors(
@@ -517,7 +541,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     )
                 )
                 NavigationBarItem(
-                    selected = tab == Tab.ALBUMS, onClick = { tab = Tab.ALBUMS },
+                    selected = tab == Tab.ALBUMS, onClick = { goToTab(Tab.ALBUMS) },
                     icon = { Icon(Icons.Filled.Album, contentDescription = "Albums") },
                     label = { Text("Albums") },
                     colors = NavigationBarItemDefaults.colors(

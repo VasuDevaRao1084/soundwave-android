@@ -234,6 +234,32 @@ object SaavnApi {
         return Song(id, title, artist, album.ifBlank { null }, image, durationSec, streamUrl, "saavn")
     }
 
+    /**
+     * Real popularity chart per language — reuses the same verified
+     * search.getResults endpoint and parser as normal search, but filters
+     * results to the requested language and sorts by JioSaavn's actual
+     * play_count field. Not curated by us and not random — genuinely the
+     * most-played matching songs the catalog returns for that language.
+     */
+    suspend fun getTopSongsByLanguage(language: String): List<Song> {
+        val seedQuery = "$language hit songs"
+        val encoded = java.net.URLEncoder.encode(seedQuery, "UTF-8")
+        val url = "$JIOSAAVN_DIRECT_BASE?__call=search.getResults&q=$encoded&p=1&n=40&_format=json&_marker=0&api_version=4&ctx=wap6dot0"
+        val json = getJson(url)
+        val results = json.optJSONArray("results") ?: JSONArray()
+
+        val matched = mutableListOf<Pair<Song, Long>>()
+        for (i in 0 until results.length()) {
+            val o = results.optJSONObject(i) ?: continue
+            val lang = o.optString("language", "").lowercase()
+            if (lang != language.lowercase()) continue // keep charts language-pure
+            val song = buildSongFromSearchResult(o) ?: continue
+            val playCount = o.optString("play_count", "0").toLongOrNull() ?: 0L
+            matched.add(song to playCount)
+        }
+        return matched.sortedByDescending { it.second }.map { it.first }.take(15)
+    }
+
     suspend fun getSongById(id: String): Song? {
         // YouTube songs use "yt_" prefix — re-fetch via YouTube
         if (id.startsWith("yt_")) {

@@ -41,7 +41,18 @@ import com.soundwave.app.ui.theme.SwTextSecondary
 import com.soundwave.app.ui.theme.SwTextTertiary
 import com.soundwave.app.ui.theme.extractAlbumTheme
 
-private val moodChips = listOf("☀️ Morning", "🎯 Focus", "😌 Chill", "🎉 Party", "💪 Workout", "😴 Sleep")
+// JioSaavn's API is a plain text search, not a curated mood/playlist system —
+// so each mood maps to a keyword search likely to surface matching songs
+// (titles/albums literally using these words), rather than an editorially
+// curated mood playlist like Spotify's. Good-enough, not perfect.
+private val moodChips = listOf(
+    "☀️ Morning" to "morning melody",
+    "🎯 Focus" to "instrumental focus",
+    "😌 Chill" to "chill hits",
+    "🎉 Party" to "party anthems",
+    "💪 Workout" to "workout motivation",
+    "😴 Sleep" to "peaceful sleep"
+)
 
 @Composable
 fun HomeScreen(
@@ -49,6 +60,9 @@ fun HomeScreen(
     recentlyPlayed: List<Song>,
     savedAlbums: List<SavedAlbum>,
     recommendedSongs: List<Song>,
+    topTelugu: List<Song>,
+    topHindi: List<Song>,
+    topEnglish: List<Song>,
     currentSongId: String?,
     isAudioPlaying: Boolean,
     likedIds: Set<String>,
@@ -56,7 +70,8 @@ fun HomeScreen(
     onLike: (Song) -> Unit,
     onSearchAlbums: () -> Unit,
     onOpenAlbum: (SavedAlbum) -> Unit,
-    onOpenDiagnostics: () -> Unit
+    onOpenDiagnostics: () -> Unit,
+    onMoodClick: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SwBg),
@@ -188,11 +203,48 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                moodChips.forEach { mood ->
-                    MoodChip(label = mood)
+                moodChips.forEach { (label, moodQuery) ->
+                    MoodChip(label = label, onClick = { onMoodClick(moodQuery) })
                 }
             }
             Spacer(Modifier.height(28.dp))
+        }
+
+        // ── Top charts by language ───────────────────────────────────────────────
+        // Ranked by JioSaavn's real play_count field — genuinely the most-played
+        // matching songs, not a random or hand-picked list.
+        listOf(
+            Triple("Top Telugu", "🔥", topTelugu),
+            Triple("Top Hindi", "🔥", topHindi),
+            Triple("Top English", "🔥", topEnglish)
+        ).forEach { (title, emoji, songs) ->
+            if (songs.isNotEmpty()) {
+                item {
+                    Text(
+                        "$emoji $title",
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        songs.forEach { song ->
+                            RecommendationCard(
+                                song = song,
+                                isPlaying = song.id == currentSongId,
+                                onClick = { onPlay(song) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(28.dp))
+                }
+            }
         }
 
         // ── Albums & Artists ───────────────────────────────────────────────────
@@ -437,12 +489,12 @@ private fun RecommendationCard(song: Song, isPlaying: Boolean, onClick: () -> Un
 }
 
 @Composable
-private fun MoodChip(label: String) {
+private fun MoodChip(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF1A1730))
-            .clickable { }
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
