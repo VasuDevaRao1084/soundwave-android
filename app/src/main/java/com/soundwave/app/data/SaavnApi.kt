@@ -242,22 +242,57 @@ object SaavnApi {
      * most-played matching songs the catalog returns for that language.
      */
     suspend fun getTopSongsByLanguage(language: String): List<Song> {
-        val seedQuery = "$language hit songs"
-        val encoded = java.net.URLEncoder.encode(seedQuery, "UTF-8")
-        val url = "$JIOSAAVN_DIRECT_BASE?__call=search.getResults&q=$encoded&p=1&n=60&_format=json&_marker=0&api_version=4&ctx=wap6dot0"
-        val json = getJson(url)
-        val results = json.optJSONArray("results") ?: JSONArray()
+        // A single narrow query can return too few DISTINCT songs once
+        // covers/duplicates are filtered out — especially for English, where
+        // JioSaavn's catalog is much thinner than its Indian-language content.
+        // Querying a few varied seed terms and merging gives a bigger, more
+        // diverse pool to dedupe and rank from.
+        val seedQueries = listOf("$language hit songs", "$language top songs", "$language popular songs")
 
         val matched = mutableListOf<Pair<Song, Long>>()
-        for (i in 0 until results.length()) {
-            val o = results.optJSONObject(i) ?: continue
-            val lang = o.optString("language", "").lowercase()
-            if (lang != language.lowercase()) continue // keep charts language-pure
-            val song = buildSongFromSearchResult(o) ?: continue
-            val playCount = o.optString("play_count", "0").toLongOrNull() ?: 0L
-            matched.add(song to playCount)
+        for (seedQuery in seedQueries) {
+            try {
+                val encoded = java.net.URLEncoder.encode(seedQuery, "UTF-8")
+                val url = "$JIOSAAVN_DIRECT_BASE?__call=search.getResults&q=$encoded&p=1&n=60&_format=json&_marker=0&api_version=4&ctx=wap6dot0"
+                val json = getJson(url)
+                val results = json.optJSONArray("results") ?: JSONArray()
+
+                for (i in 0 until results.length()) {
+                    val o = results.optJSONObject(i) ?: continue
+                    val lang = o.optString("language", "").lowercase()
+                    if (lang != language.lowercase()) continue // keep charts language-pure
+                    val song = buildSongFromSearchResult(o) ?: continue
+
+                    // JioSaavn's catalog re-uploads the same song under multiple
+                    // compilation albums (different ID, different cover art,
+                    // same actual song) — filter covers/remixes same as search
+                    // does, then dedupe by title+artist below so those
+                    // re-uploads don't eat up chart slots as if they were
+                    // different songs.
+                    val titleLower = song.title.lowercase()
+                    val artistLower = song.artist.lowercase()
+                    val albumLower = song.album?.lowercase() ?: ""
+                    val looksLikeCover = coverIndicators.any {
+                        artistLower.contains(it) || albumLower.contains(it) || titleLower.contains(it)
+                    }
+                    if (looksLikeCover) continue
+
+                    val playCount = o.optString("play_count", "0").toLongOrNull() ?: 0L
+                    matched.add(song to playCount)
+                }
+            } catch (e: Exception) {
+                // One seed query failing shouldn't sink the whole chart — the others may still succeed
+            }
         }
-        return matched.sortedByDescending { it.second }.map { it.first }.take(30)
+
+        // Dedupe: same title+artist re-uploaded under different albums/IDs
+        // (or returned by more than one of the seed queries above) keeps only
+        // the highest-play-count version.
+        val deduped = matched
+            .groupBy { (song, _) -> "${song.title.trim().lowercase()}|${song.artist.trim().lowercase()}" }
+            .map { (_, group) -> group.maxByOrNull { it.second }!! }
+
+        return deduped.sortedByDescending { it.second }.map { it.first }.take(30)
     }
 
     suspend fun getSongById(id: String): Song? {
