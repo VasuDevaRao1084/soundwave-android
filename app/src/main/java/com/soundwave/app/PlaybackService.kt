@@ -41,6 +41,31 @@ class PlaybackService : MediaSessionService() {
             }
         })
 
+        // Redundant safety net: the AnalyticsListener callback above only fires
+        // on a session ID CHANGE. If ExoPlayer assigns the session ID before
+        // that listener was registered (or the callback is simply unreliable
+        // on a given device/OS version), the callback might never fire and
+        // effects would silently never attach. This listener re-checks
+        // player.audioSessionId directly — a plain getter that always reflects
+        // whatever the real current session ID is — every time playback
+        // actually becomes ready, which guarantees a valid session ID exists.
+        // attachToSession() already no-ops if it's the same session it already
+        // has, so calling this repeatedly is harmless.
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) {
+                    try {
+                        val sessionId = player.audioSessionId
+                        if (sessionId > 0) {
+                            com.soundwave.app.audio.AudioEffectsManager.attachToSession(this@PlaybackService, sessionId)
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SoundWave", "Failed to attach audio effects on ready (non-fatal)", e)
+                    }
+                }
+            }
+        })
+
         val sessionActivityIntent = packageManager.getLaunchIntentForPackage(packageName)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, sessionActivityIntent,

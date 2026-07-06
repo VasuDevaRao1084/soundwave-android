@@ -44,8 +44,25 @@ fun SoundSettingsScreen(
     var bassBoost by remember { mutableStateOf(AudioEffectsManager.bassBoostStrength.toFloat()) }
     var volumeBoost by remember { mutableStateOf(AudioEffectsManager.volumeBoostMb.toFloat()) }
     var selectedPreset by remember { mutableStateOf(AudioEffectsManager.eqPresetIndex) }
-    val presetNames = remember { AudioEffectsManager.getPresetNames() }
+    var presetNames by remember { mutableStateOf(AudioEffectsManager.getPresetNames()) }
     var bands by remember { mutableStateOf(AudioEffectsManager.getBands()) }
+    var eqAvailable by remember { mutableStateOf(AudioEffectsManager.isEqualizerAvailable()) }
+    var bassAvailable by remember { mutableStateOf(AudioEffectsManager.isBassBoostAvailable()) }
+    var volumeBoostAvailable by remember { mutableStateOf(AudioEffectsManager.isVolumeBoostAvailable()) }
+
+    // Effects attach to the audio session asynchronously once playback is
+    // actually ready. If this screen happened to open in the brief window
+    // before that finished, availability would read as false and never
+    // update. This re-checks shortly after opening so the screen
+    // self-corrects instead of permanently showing "not supported".
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(400)
+        eqAvailable = AudioEffectsManager.isEqualizerAvailable()
+        bassAvailable = AudioEffectsManager.isBassBoostAvailable()
+        volumeBoostAvailable = AudioEffectsManager.isVolumeBoostAvailable()
+        presetNames = AudioEffectsManager.getPresetNames()
+        bands = AudioEffectsManager.getBands()
+    }
 
     fun noRippleClick(onClick: () -> Unit): Modifier = Modifier.clickable(
         indication = null,
@@ -124,7 +141,7 @@ fun SoundSettingsScreen(
             // ── Equalizer ────────────────────────────────────────────────────
             item {
                 SectionCard(title = "Equalizer") {
-                    if (!AudioEffectsManager.isEqualizerAvailable()) {
+                    if (!eqAvailable) {
                         Text(
                             "Equalizer isn't supported on this device.",
                             color = SwTextSecondary, fontSize = 13.sp
@@ -196,7 +213,7 @@ fun SoundSettingsScreen(
             // ── Bass Boost ───────────────────────────────────────────────────
             item {
                 SectionCard(title = "Bass Boost") {
-                    if (!AudioEffectsManager.isBassBoostAvailable()) {
+                    if (!bassAvailable) {
                         Text("Bass Boost isn't supported on this device.", color = SwTextSecondary, fontSize = 13.sp)
                     } else {
                         Slider(
@@ -223,7 +240,7 @@ fun SoundSettingsScreen(
                         "Boosts quiet tracks. Not the same as matching loudness across songs — just a volume increase.",
                         color = SwTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 10.dp)
                     )
-                    if (!AudioEffectsManager.isVolumeBoostAvailable()) {
+                    if (!volumeBoostAvailable) {
                         Text("Not supported on this device.", color = SwTextSecondary, fontSize = 13.sp)
                     } else {
                         Slider(

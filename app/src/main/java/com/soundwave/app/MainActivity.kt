@@ -423,7 +423,10 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         onSetAudioQuality = { vm.setAudioQuality(it) },
                         smoothTransitionsEnabled = smoothTransitionsEnabled,
                         onSetSmoothTransitions = { vm.setSmoothTransitions(it) },
-                        onBack = { showSoundSettings = false }
+                        onBack = {
+                            showSoundSettings = false
+                            if (currentSong != null) showNowPlaying = true
+                        }
                     )
                     else -> when (tab) {
                         Tab.HOME -> HomeScreen(
@@ -552,7 +555,17 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     onSetSleepTimer = { vm.setSleepTimer(it) },
                     onShowQueue = { showQueue = true },
                     onAddToPlaylist = { addToPlaylistSong = song },
-                    onOpenSoundSettings = { showSoundSettings = true }
+                    onOpenSoundSettings = {
+                        // NowPlayingScreen renders as an overlay ON TOP of the main
+                        // content area (including Sound Settings) — so opening
+                        // Settings without also collapsing this overlay left it
+                        // sitting there fully blocking the screen underneath, even
+                        // though Settings had genuinely opened. Collapsing to mini
+                        // player here reveals it immediately, and onBack below
+                        // restores the full player.
+                        showNowPlaying = false
+                        showSoundSettings = true
+                    }
                 )
             }
         }
