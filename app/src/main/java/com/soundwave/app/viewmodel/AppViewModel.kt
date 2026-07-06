@@ -27,7 +27,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // If a session was restored from disk, load their library immediately
         _user.value?.let { loadUserData(it.id) }
-        loadTopCharts()
     }
 
     private fun restoreUser(): UserProfile? {
@@ -84,6 +83,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val topHindi: StateFlow<List<Song>> = _topHindi.asStateFlow()
     private val _topEnglish = MutableStateFlow<List<Song>>(emptyList())
     val topEnglish: StateFlow<List<Song>> = _topEnglish.asStateFlow()
+
+    // ── Mood playlists ─────────────────────────────────────────────────────────
+    // Tapping a mood chip opens a real song list (like a playlist), not a
+    // search screen. Under the hood it's still a keyword search against
+    // JioSaavn's catalog (there's no curated mood-playlist endpoint available),
+    // but the UX is a proper playlist view, not the Search tab.
+    data class MoodPlaylist(val title: String, val songs: List<Song>, val isLoading: Boolean)
+    private val _moodPlaylist = MutableStateFlow<MoodPlaylist?>(null)
+    val moodPlaylist: StateFlow<MoodPlaylist?> = _moodPlaylist.asStateFlow()
+
+    fun openMoodPlaylist(title: String, query: String) {
+        _moodPlaylist.value = MoodPlaylist(title, emptyList(), isLoading = true)
+        viewModelScope.launch {
+            try {
+                val results = SaavnApi.search(query)
+                _moodPlaylist.value = MoodPlaylist(title, results, isLoading = false)
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "MOOD_PLAYLIST", "Failed to load \"$title\": ${e.message}")
+                _moodPlaylist.value = MoodPlaylist(title, emptyList(), isLoading = false)
+            }
+        }
+    }
+
+    fun closeMoodPlaylist() {
+        _moodPlaylist.value = null
+    }
 
     private fun loadTopCharts() {
         viewModelScope.launch {
@@ -165,6 +190,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // it's a plain object property (not itself persisted) that needs to
         // be set once at startup to match whatever the user chose last time.
         SaavnApi.preferredQualityKbps = _audioQuality.value.kbps
+
+        // Runs here (not the earlier init block) because _topTelugu/_topHindi/
+        // _topEnglish aren't assigned until later in the constructor — calling
+        // this too early caused a null MutableStateFlow crash the first time.
+        loadTopCharts()
     }
 
     private val _downloadedIds = MutableStateFlow<Set<String>>(restoreDownloads())

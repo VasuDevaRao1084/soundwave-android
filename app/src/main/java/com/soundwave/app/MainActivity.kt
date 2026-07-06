@@ -34,6 +34,7 @@ import com.soundwave.app.ui.screens.AlbumDetailScreen
 import com.soundwave.app.ui.screens.AlbumSearchScreen
 import com.soundwave.app.ui.screens.DiagnosticsScreen
 import com.soundwave.app.ui.screens.SoundSettingsScreen
+import com.soundwave.app.ui.screens.SongListScreen
 import com.soundwave.app.ui.screens.HomeScreen
 import com.soundwave.app.ui.screens.LibraryScreen
 import com.soundwave.app.ui.screens.LoginScreen
@@ -327,6 +328,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val topTelugu by vm.topTelugu.collectAsState()
     val topHindi by vm.topHindi.collectAsState()
     val topEnglish by vm.topEnglish.collectAsState()
+    val moodPlaylist by vm.moodPlaylist.collectAsState()
     val audioQuality by vm.audioQuality.collectAsState()
     val smoothTransitionsEnabled by vm.smoothTransitionsEnabled.collectAsState()
     val currentSong by vm.currentSong.collectAsState()
@@ -369,18 +371,22 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var showSoundSettings by remember { mutableStateOf(false) }
+    var openChart by remember { mutableStateOf<Pair<String, List<Song>>?>(null) }
 
     // Switching bottom-nav tabs should always take you to that tab's content —
     // any currently-open overlay screen (Sound Settings, Diagnostics, Album
-    // Search, an opened Album/Playlist) needs to be dismissed first, otherwise
-    // the content `when` block below keeps showing the overlay regardless of
-    // which tab is selected, since those checks run before the tab check.
+    // Search, an opened Album/Playlist/Chart/Mood playlist) needs to be
+    // dismissed first, otherwise the content `when` block below keeps showing
+    // the overlay regardless of which tab is selected, since those checks run
+    // before the tab check.
     fun goToTab(t: Tab) {
         showSoundSettings = false
         showDiagnostics = false
         showAlbumSearch = false
         openAlbum = null
         openPlaylist = null
+        openChart = null
+        vm.closeMoodPlaylist()
         tab = t
     }
 
@@ -445,6 +451,27 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             if (currentSong != null) showNowPlaying = true
                         }
                     )
+                    moodPlaylist != null -> SongListScreen(
+                        title = moodPlaylist!!.title,
+                        subtitle = "Mood playlist",
+                        songs = moodPlaylist!!.songs,
+                        isLoading = moodPlaylist!!.isLoading,
+                        currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
+                        onPlay = { song, q -> vm.playSong(song, q) },
+                        onLike = { vm.toggleLike(it) },
+                        onAddToPlaylist = { addToPlaylistSong = it },
+                        onBack = { vm.closeMoodPlaylist() }
+                    )
+                    openChart != null -> SongListScreen(
+                        title = openChart!!.first,
+                        subtitle = "Top 30 by popularity",
+                        songs = openChart!!.second,
+                        currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
+                        onPlay = { song, q -> vm.playSong(song, q) },
+                        onLike = { vm.toggleLike(it) },
+                        onAddToPlaylist = { addToPlaylistSong = it },
+                        onBack = { openChart = null }
+                    )
                     else -> when (tab) {
                         Tab.HOME -> HomeScreen(
                             user = user, recentlyPlayed = recentlyPlayed,
@@ -461,10 +488,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             onSearchAlbums = { showAlbumSearch = true },
                             onOpenAlbum = { openAlbum = it },
                             onOpenDiagnostics = { showDiagnostics = true },
-                            onMoodClick = { moodQuery ->
-                                query = moodQuery
-                                goToTab(Tab.SEARCH)
-                            }
+                            onMoodClick = { title, moodQuery -> vm.openMoodPlaylist(title, moodQuery) },
+                            onOpenChart = { title, songs -> openChart = title to songs }
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbums.map { it.id }.toSet(),

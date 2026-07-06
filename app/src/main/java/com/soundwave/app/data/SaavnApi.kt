@@ -244,7 +244,7 @@ object SaavnApi {
     suspend fun getTopSongsByLanguage(language: String): List<Song> {
         val seedQuery = "$language hit songs"
         val encoded = java.net.URLEncoder.encode(seedQuery, "UTF-8")
-        val url = "$JIOSAAVN_DIRECT_BASE?__call=search.getResults&q=$encoded&p=1&n=40&_format=json&_marker=0&api_version=4&ctx=wap6dot0"
+        val url = "$JIOSAAVN_DIRECT_BASE?__call=search.getResults&q=$encoded&p=1&n=60&_format=json&_marker=0&api_version=4&ctx=wap6dot0"
         val json = getJson(url)
         val results = json.optJSONArray("results") ?: JSONArray()
 
@@ -257,7 +257,7 @@ object SaavnApi {
             val playCount = o.optString("play_count", "0").toLongOrNull() ?: 0L
             matched.add(song to playCount)
         }
-        return matched.sortedByDescending { it.second }.map { it.first }.take(15)
+        return matched.sortedByDescending { it.second }.map { it.first }.take(30)
     }
 
     suspend fun getSongById(id: String): Song? {

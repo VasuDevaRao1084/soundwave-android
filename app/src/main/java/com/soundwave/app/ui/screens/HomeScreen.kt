@@ -71,7 +71,8 @@ fun HomeScreen(
     onSearchAlbums: () -> Unit,
     onOpenAlbum: (SavedAlbum) -> Unit,
     onOpenDiagnostics: () -> Unit,
-    onMoodClick: (String) -> Unit
+    onMoodClick: (String, String) -> Unit,
+    onOpenChart: (String, List<Song>) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SwBg),
@@ -204,7 +205,7 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 moodChips.forEach { (label, moodQuery) ->
-                    MoodChip(label = label, onClick = { onMoodClick(moodQuery) })
+                    MoodChip(label = label, onClick = { onMoodClick(label, moodQuery) })
                 }
             }
             Spacer(Modifier.height(28.dp))
@@ -220,13 +221,22 @@ fun HomeScreen(
         ).forEach { (title, emoji, songs) ->
             if (songs.isNotEmpty()) {
                 item {
-                    Text(
-                        "$emoji $title",
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 20.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .clickable { onOpenChart(title, songs) },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "$emoji $title",
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text("See all ${songs.size} →", color = SwPurple, fontSize = 13.sp)
+                    }
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier
@@ -234,7 +244,7 @@ fun HomeScreen(
                             .padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        songs.forEach { song ->
+                        songs.take(10).forEach { song ->
                             RecommendationCard(
                                 song = song,
                                 isPlaying = song.id == currentSongId,
