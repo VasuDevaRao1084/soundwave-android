@@ -83,7 +83,7 @@ object SaavnApi {
         // ("Error 1027") and took search down for everyone; talking to
         // JioSaavn's own backend directly removes that single point of failure.
         val ranked = try { searchJioSaavnDirectRanked(query) } catch (e: Exception) { emptyList() }
-        val songs = rankResults(ranked, query)
+        val songs = dedupe(rankResults(ranked, query))
 
         val hasGoodResult = songs.any { it.language != "instrumental" && !it.looksLikeCover }
         if (songs.isEmpty() || (!hasGoodResult && songs.all { it.language == "instrumental" || it.looksLikeCover })) {
@@ -91,6 +91,23 @@ object SaavnApi {
             if (ytSongs.isNotEmpty()) return ytSongs
         }
         return songs.map { it.song }
+    }
+
+    // JioSaavn frequently re-uploads the exact same song into many different
+    // "mood compilation" albums (Workout Bangers, Valentine's Day, Bowling
+    // Music, Graduation, ...) — same title, same artist, same audio, just
+    // wrapped in different cover art. That's a duplicate, not a different
+    // version, so it shouldn't eat up 6 search-result slots. rankResults has
+    // already sorted best-match-first, so keeping the first occurrence per
+    // title+artist keeps the highest-scoring copy and drops the rest.
+    private fun dedupe(songs: List<RankedSong>): List<RankedSong> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<RankedSong>()
+        for (ranked in songs) {
+            val key = "${ranked.song.title.trim().lowercase()}|${ranked.song.artist.trim().lowercase()}"
+            if (seen.add(key)) result.add(ranked)
+        }
+        return result
     }
 
     private data class RankedSong(val song: Song, val language: String, val looksLikeCover: Boolean, val playCount: Long)
