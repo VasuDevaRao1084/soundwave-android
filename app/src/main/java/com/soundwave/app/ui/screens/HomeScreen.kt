@@ -2,6 +2,7 @@ package com.soundwave.app.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -29,6 +30,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.soundwave.app.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -216,13 +219,47 @@ fun HomeScreen(
             Spacer(Modifier.height(28.dp))
         }
 
-        // ── Top charts by language ───────────────────────────────────────────────
+        // ── Charts: unified playlist-cover row (Spotify-style) ───────────────────
+        // One big cover card per language chart instead of 3 separate rows of
+        // 10 song cards each — the #1 song's own art becomes the playlist
+        // cover, with the chart name overlaid, same pattern as Spotify's
+        // "Latest Telugu" edicorial covers.
+        if (topTelugu.isNotEmpty() || topHindi.isNotEmpty() || topEnglish.isNotEmpty()) {
+            item {
+                Text(
+                    "Charts",
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val charts = listOfNotNull(
+                        if (topTelugu.isNotEmpty()) Triple("Top", "Telugu", topTelugu) else null,
+                        if (topHindi.isNotEmpty()) Triple("Top", "Hindi", topHindi) else null,
+                        if (topEnglish.isNotEmpty()) Triple("Top", "English", topEnglish) else null
+                    )
+                    items(charts, key = { it.second }) { (line1, line2, songs) ->
+                        PlaylistCoverCard(
+                            line1 = line1,
+                            line2 = line2,
+                            coverThumbnail = songs.first().thumbnail,
+                            onClick = { onOpenChart("$line1 $line2", songs) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
+            }
+        }
+
+        // ── Top charts by language (Most Searched only from here) ───────────────
         // Ranked by JioSaavn's real play_count field — genuinely the most-played
         // matching songs, not a random or hand-picked list.
         listOf(
-            Triple("Top Telugu", "🔥", topTelugu) to true,
-            Triple("Top Hindi", "🔥", topHindi) to true,
-            Triple("Top English", "🔥", topEnglish) to true,
             Triple("Most Searched Telugu", "🔎", mostSearchedTelugu) to false,
             Triple("Most Searched Hindi", "🔎", mostSearchedHindi) to false,
             Triple("Most Searched English", "🔎", mostSearchedEnglish) to false
@@ -252,20 +289,11 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         itemsIndexed(songs.take(10), key = { _, song -> song.id }) { index, song ->
-                            if (isRanked) {
-                                RecommendationCard(
-                                    song = song,
-                                    isPlaying = song.id == currentSongId,
-                                    rank = index + 1,
-                                    onClick = { onPlay(song) }
-                                )
-                            } else {
-                                CompactChartChip(
-                                    song = song,
-                                    isPlaying = song.id == currentSongId,
-                                    onClick = { onPlay(song) }
-                                )
-                            }
+                            CompactChartChip(
+                                song = song,
+                                isPlaying = song.id == currentSongId,
+                                onClick = { onPlay(song) }
+                            )
                         }
                     }
                     Spacer(Modifier.height(20.dp))
@@ -527,6 +555,55 @@ private fun RecommendationCard(song: Song, isPlaying: Boolean, rank: Int? = null
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun PlaylistCoverCard(line1: String, line2: String, coverThumbnail: String?, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(160.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1A1730))
+            .clickable(onClick = onClick)
+    ) {
+        if (coverThumbnail != null) {
+            AsyncImage(
+                model = coverThumbnail,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.High
+            )
+        }
+        // Dark scrim so the overlaid text stays readable over any album art.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)),
+                        startY = 60f
+                    )
+                )
+        )
+        Image(
+            painter = painterResource(id = R.mipmap.ic_launcher),
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp)
+                .size(28.dp)
+                .clip(RoundedCornerShape(6.dp))
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(12.dp)
+        ) {
+            Text(line1, color = Color(0xFFFFE14D), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 22.sp)
+            Text(line2, color = Color(0xFFFFE14D), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 22.sp)
+        }
     }
 }
 
