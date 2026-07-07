@@ -66,7 +66,8 @@ fun SongRow(
                     model = song.thumbnail,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High
                 )
             } else {
                 Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextSecondary, modifier = Modifier.size(24.dp))

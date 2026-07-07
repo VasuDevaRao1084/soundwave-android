@@ -7,7 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +25,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -173,13 +177,11 @@ fun HomeScreen(
                     modifier = Modifier.padding(horizontal = 20.dp)
                 )
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    recommendedSongs.forEach { song ->
+                    items(recommendedSongs, key = { it.id }) { song ->
                         RecommendationCard(
                             song = song,
                             isPlaying = song.id == currentSongId,
@@ -245,19 +247,25 @@ fun HomeScreen(
                         Text("See all ${songs.size} →", color = SwPurple, fontSize = 12.sp)
                     }
                     Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp),
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        songs.take(10).forEachIndexed { index, song ->
-                            RecommendationCard(
-                                song = song,
-                                isPlaying = song.id == currentSongId,
-                                rank = if (isRanked) index + 1 else null,
-                                onClick = { onPlay(song) }
-                            )
+                        itemsIndexed(songs.take(10), key = { _, song -> song.id }) { index, song ->
+                            if (isRanked) {
+                                RecommendationCard(
+                                    song = song,
+                                    isPlaying = song.id == currentSongId,
+                                    rank = index + 1,
+                                    onClick = { onPlay(song) }
+                                )
+                            } else {
+                                CompactChartChip(
+                                    song = song,
+                                    isPlaying = song.id == currentSongId,
+                                    onClick = { onPlay(song) }
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(20.dp))
@@ -299,13 +307,11 @@ fun HomeScreen(
                     Text("Tap Search + to add albums", color = SwTextSecondary, fontSize = 14.sp)
                 }
             } else {
-                Row(
-                    modifier = Modifier
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    savedAlbums.forEach { album ->
+                    items(savedAlbums, key = { it.id }) { album ->
                         AlbumCard(album = album, onClick = { onOpenAlbum(album) })
                     }
                 }
@@ -481,7 +487,8 @@ private fun RecommendationCard(song: Song, isPlaying: Boolean, rank: Int? = null
                     model = song.thumbnail,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High
                 )
             } else {
                 Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextTertiary, modifier = Modifier.size(30.dp))
@@ -524,6 +531,61 @@ private fun RecommendationCard(song: Song, isPlaying: Boolean, rank: Int? = null
 }
 
 @Composable
+private fun CompactChartChip(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .width(200.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                brush = if (isPlaying) SolidColor(SwPurple.copy(alpha = 0.20f))
+                else Brush.horizontalGradient(listOf(Color(0xFF241B3A), Color(0xFF17132A))),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF1A1730)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (song.thumbnail != null) {
+                AsyncImage(
+                    model = song.thumbnail,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High
+                )
+            } else {
+                Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextTertiary, modifier = Modifier.size(24.dp))
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                song.title,
+                color = if (isPlaying) SwPurple else Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                song.artist,
+                color = SwTextSecondary,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
 private fun MoodChip(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
@@ -556,7 +618,8 @@ private fun AlbumCard(album: SavedAlbum, onClick: () -> Unit) {
                     model = album.thumbnail,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High
                 )
             } else {
                 Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextTertiary, modifier = Modifier.size(40.dp))

@@ -35,6 +35,16 @@ object SaavnApi {
 
     // ── HTTP helpers ───────────────────────────────────────────────────────────
 
+    // JioSaavn's various endpoints return image URLs at different low-res
+    // sizes depending on the call (search: 150x150, autocomplete/albums:
+    // sometimes 50x50 or 100x100). A literal .replace("150x150", "500x500")
+    // silently no-ops on anything that isn't exactly that pattern — which is
+    // why saved-album art was showing blurry: autocomplete.get wasn't
+    // guaranteed to be 150x150, so the upscale never applied. This regex
+    // matches any NxN size segment in the URL and swaps it for 500x500.
+    private fun upscaleImage(url: String): String =
+        url.replace(Regex("\\d{1,4}x\\d{1,4}"), "500x500")
+
     private suspend fun getJson(url: String): JSONObject = suspendCancellableCoroutine { cont ->
         val request = Request.Builder().url(url).build()
         client.newCall(request).enqueue(object : okhttp3.Callback {
@@ -188,7 +198,7 @@ object SaavnApi {
         val title = htmlDecode(data.optString("song", ""))
         val artist = htmlDecode(data.optString("primary_artists", data.optString("singers", "Unknown Artist")))
         val album = htmlDecode(data.optString("album", ""))
-        val image = data.optString("image", "").replace("150x150", "500x500")
+        val image = upscaleImage(data.optString("image", ""))
         val durationSec = data.optString("duration", "0").toIntOrNull() ?: 0
 
         val encryptedUrl = data.optString("encrypted_media_url", "").takeIf { it.isNotBlank() } ?: return null
@@ -241,7 +251,7 @@ object SaavnApi {
         } else "Unknown Artist"
 
         val album = htmlDecode(moreInfo.optString("album", ""))
-        val image = o.optString("image", "").replace("150x150", "500x500")
+        val image = upscaleImage(o.optString("image", ""))
         val durationSec = moreInfo.optString("duration", "0").toIntOrNull() ?: 0
 
         val encryptedUrl = moreInfo.optString("encrypted_media_url", "").takeIf { it.isNotBlank() } ?: return null
@@ -341,7 +351,7 @@ object SaavnApi {
             val id = o.optString("id").takeIf { it.isNotBlank() } ?: continue
             val name = htmlDecode(o.optString("title", o.optString("name", "")))
             val artist = htmlDecode(o.optString("description", o.optString("subtitle", o.optString("primary_artists", ""))))
-            val thumbnail = o.optString("image", "").replace("150x150", "500x500").takeIf { it.isNotBlank() }
+            val thumbnail = upscaleImage(o.optString("image", "")).takeIf { it.isNotBlank() }
             list.add(AlbumResult(id, name, artist, thumbnail))
         }
         return list
