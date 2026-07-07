@@ -33,7 +33,8 @@ import kotlinx.coroutines.delay
 fun AlbumSearchScreen(
     savedAlbumIds: Set<String>,
     onBack: () -> Unit,
-    onSaveAlbum: (SavedAlbum) -> Unit
+    onSaveAlbum: (SavedAlbum) -> Unit,
+    onOpenAlbum: (SavedAlbum) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SaavnApi.AlbumResult>>(emptyList()) }
@@ -84,8 +85,8 @@ fun AlbumSearchScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = !alreadySaved) {
-                                onSaveAlbum(
+                            .clickable {
+                                onOpenAlbum(
                                     SavedAlbum(album.id, album.name, album.artist, album.thumbnail, album.name)
                                 )
                             }
@@ -104,7 +105,14 @@ fun AlbumSearchScreen(
                         Text(
                             if (alreadySaved) "Saved" else "Save",
                             color = if (alreadySaved) Color.Gray else Color(0xFF8B5CF6),
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .clickable(enabled = !alreadySaved) {
+                                    onSaveAlbum(
+                                        SavedAlbum(album.id, album.name, album.artist, album.thumbnail, album.name)
+                                    )
+                                }
+                                .padding(8.dp)
                         )
                     }
                 }

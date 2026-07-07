@@ -429,7 +429,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     showAlbumSearch -> AlbumSearchScreen(
                         savedAlbumIds = savedAlbums.map { it.id }.toSet(),
                         onBack = { showAlbumSearch = false },
-                        onSaveAlbum = { vm.saveAlbum(it); showAlbumSearch = false }
+                        onSaveAlbum = { vm.saveAlbum(it); showAlbumSearch = false },
+                        onOpenAlbum = { openAlbum = it; showAlbumSearch = false }
                     )
                     showDiagnostics -> {
                         val context = androidx.compose.ui.platform.LocalContext.current
@@ -500,7 +501,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbums.map { it.id }.toSet(),
                             onBack = { tab = Tab.HOME },
-                            onSaveAlbum = { vm.saveAlbum(it) }
+                            onSaveAlbum = { vm.saveAlbum(it) },
+                            onOpenAlbum = { openAlbum = it }
                         )
                         Tab.SEARCH -> SearchScreen(
                             query = query, onQueryChange = { query = it }, results = searchResults,
