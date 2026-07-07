@@ -218,13 +218,14 @@ fun HomeScreen(
         // Ranked by JioSaavn's real play_count field — genuinely the most-played
         // matching songs, not a random or hand-picked list.
         listOf(
-            Triple("Top Telugu", "🔥", topTelugu),
-            Triple("Top Hindi", "🔥", topHindi),
-            Triple("Top English", "🔥", topEnglish),
-            Triple("Most Searched Telugu", "🔎", mostSearchedTelugu),
-            Triple("Most Searched Hindi", "🔎", mostSearchedHindi),
-            Triple("Most Searched English", "🔎", mostSearchedEnglish)
-        ).forEach { (title, emoji, songs) ->
+            Triple("Top Telugu", "🔥", topTelugu) to true,
+            Triple("Top Hindi", "🔥", topHindi) to true,
+            Triple("Top English", "🔥", topEnglish) to true,
+            Triple("Most Searched Telugu", "🔎", mostSearchedTelugu) to false,
+            Triple("Most Searched Hindi", "🔎", mostSearchedHindi) to false,
+            Triple("Most Searched English", "🔎", mostSearchedEnglish) to false
+        ).forEach { (triple, isRanked) ->
+            val (title, emoji, songs) = triple
             if (songs.isNotEmpty()) {
                 item {
                     Row(
@@ -238,27 +239,28 @@ fun HomeScreen(
                         Text(
                             "$emoji $title",
                             color = Color.White,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        Text("See all ${songs.size} →", color = SwPurple, fontSize = 13.sp)
+                        Text("See all ${songs.size} →", color = SwPurple, fontSize = 12.sp)
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
                     Row(
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        songs.take(10).forEach { song ->
+                        songs.take(10).forEachIndexed { index, song ->
                             RecommendationCard(
                                 song = song,
                                 isPlaying = song.id == currentSongId,
+                                rank = if (isRanked) index + 1 else null,
                                 onClick = { onPlay(song) }
                             )
                         }
                     }
-                    Spacer(Modifier.height(28.dp))
+                    Spacer(Modifier.height(20.dp))
                 }
             }
         }
@@ -461,16 +463,16 @@ private fun RecentSongCard(
 }
 
 @Composable
-private fun RecommendationCard(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
+private fun RecommendationCard(song: Song, isPlaying: Boolean, rank: Int? = null, onClick: () -> Unit) {
     Column(
         modifier = Modifier
-            .width(140.dp)
+            .width(112.dp)
             .clickable(onClick = onClick),
     ) {
         Box(
             modifier = Modifier
-                .size(140.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .size(112.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .background(if (isPlaying) SwPurple.copy(alpha = 0.25f) else Color(0xFF1A1730)),
             contentAlignment = Alignment.Center
         ) {
@@ -482,10 +484,27 @@ private fun RecommendationCard(song: Song, isPlaying: Boolean, onClick: () -> Un
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextTertiary, modifier = Modifier.size(36.dp))
+                Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextTertiary, modifier = Modifier.size(30.dp))
+            }
+            if (rank != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        "#$rank",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             song.title,
             color = if (isPlaying) SwPurple else Color.White,
