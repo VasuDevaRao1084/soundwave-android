@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -49,17 +50,30 @@ import com.soundwave.app.ui.theme.SwTextTertiary
 import com.soundwave.app.ui.theme.extractAlbumTheme
 
 // JioSaavn's API is a plain text search, not a curated mood/playlist system —
-// so each mood maps to a keyword search likely to surface matching songs
-// (titles/albums literally using these words), rather than an editorially
-// curated mood playlist like Spotify's. Good-enough, not perfect.
-private val moodChips = listOf(
-    "☀️ Morning" to "morning melody",
-    "🎯 Focus" to "instrumental focus",
-    "😌 Chill" to "chill hits",
-    "🎉 Party" to "party anthems",
-    "💪 Workout" to "workout motivation",
-    "😴 Sleep" to "peaceful sleep"
+// so each slot currently maps to a keyword search likely to surface matching
+// songs (titles/albums literally using these words), rather than an
+// editorially curated playlist like Spotify's. This is a placeholder until
+// real JioSaavn playlist tokens (like the Charts tokens) are wired in per
+// slot — swap the `query` values for `getPlaylistSongs(token)` calls once
+// real playlist links are provided.
+private data class TimeSlot(val label: String, val emoji: String, val query: String, val startHour: Int, val endHour: Int)
+
+private val timeSlots = listOf(
+    TimeSlot("Morning", "☀️", "morning melody", startHour = 5, endHour = 11),
+    TimeSlot("Afternoon", "🌤️", "afternoon feel good", startHour = 11, endHour = 17),
+    TimeSlot("Evening", "🌇", "evening chill", startHour = 17, endHour = 21),
+    TimeSlot("Night", "🌙", "late night vibes", startHour = 21, endHour = 5)
 )
+
+private fun currentTimeSlotIndex(): Int {
+    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    timeSlots.forEachIndexed { i, slot ->
+        val inRange = if (slot.startHour < slot.endHour) hour in slot.startHour until slot.endHour
+        else hour >= slot.startHour || hour < slot.endHour // wraps past midnight (Night: 21–5)
+        if (inRange) return i
+    }
+    return 0
+}
 
 @Composable
 fun HomeScreen(
@@ -199,21 +213,26 @@ fun HomeScreen(
         // ── Your mood ──────────────────────────────────────────────────────────
         item {
             Text(
-                "Your mood",
+                "Right Now",
                 color = Color.White,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 20.dp)
             )
             Spacer(Modifier.height(12.dp))
+            val activeIndex = remember { currentTimeSlotIndex() }
             Row(
                 modifier = Modifier
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                moodChips.forEach { (label, moodQuery) ->
-                    MoodChip(label = label, onClick = { onMoodClick(label, moodQuery) })
+                timeSlots.forEachIndexed { index, slot ->
+                    TimeSlotTile(
+                        slot = slot,
+                        isNow = index == activeIndex,
+                        onClick = { onMoodClick(slot.label, slot.query) }
+                    )
                 }
             }
             Spacer(Modifier.height(28.dp))
@@ -663,15 +682,48 @@ private fun CompactChartChip(song: Song, isPlaying: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun MoodChip(label: String, onClick: () -> Unit) {
+private fun timeSlotGradient(label: String): List<Color> = when (label) {
+    "Morning" -> listOf(Color(0xFFFFB347), Color(0xFFFF6F61))
+    "Afternoon" -> listOf(Color(0xFF4FACFE), Color(0xFF00C6A2))
+    "Evening" -> listOf(Color(0xFFFF7E5F), Color(0xFF7B2FF7))
+    else -> listOf(Color(0xFF16213E), Color(0xFF0F0C29)) // Night
+}
+
+@Composable
+private fun TimeSlotTile(slot: TimeSlot, isNow: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1A1730))
+            .size(width = 128.dp, height = 84.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.linearGradient(timeSlotGradient(slot.label)))
+            .then(
+                if (isNow) Modifier.border(2.dp, Color.White, RoundedCornerShape(14.dp))
+                else Modifier
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(12.dp)
     ) {
-        Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Text(slot.emoji, fontSize = 18.sp, modifier = Modifier.align(Alignment.TopStart))
+        Text(
+            slot.label,
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.BottomStart)
+        )
+        if (isNow) {
+            Text(
+                "NOW",
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+        }
     }
 }
 
