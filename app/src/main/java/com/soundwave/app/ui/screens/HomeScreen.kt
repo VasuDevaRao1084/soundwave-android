@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -60,13 +61,16 @@ import com.soundwave.app.ui.theme.extractAlbumTheme
 // real playlist links are provided.
 private data class TimeSlot(val label: String, val emoji: String, val query: String, val startHour: Int, val endHour: Int)
 
+// The 11am–5pm window uses two real curated JioSaavn playlists (Workout +
+// Trending Today) instead of a keyword-search TimeSlot — so it's handled as
+// a special case rather than living in this list.
 private val timeSlots = listOf(
     TimeSlot("Morning", "☀️", "morning melody", startHour = 5, endHour = 11),
-    TimeSlot("Afternoon", "🌤️", "afternoon feel good", startHour = 11, endHour = 17),
     TimeSlot("Evening", "🌇", "evening chill", startHour = 17, endHour = 21),
     TimeSlot("Night", "🌙", "late night vibes", startHour = 21, endHour = 5)
 )
 
+// Returns the matching TimeSlot index, or -1 during the 11am–5pm workout window.
 private fun currentTimeSlotIndex(): Int {
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     timeSlots.forEachIndexed { i, slot ->
@@ -74,13 +78,12 @@ private fun currentTimeSlotIndex(): Int {
         else hour >= slot.startHour || hour < slot.endHour // wraps past midnight (Night: 21–5)
         if (inRange) return i
     }
-    return 0
+    return -1
 }
 
 @Composable
-private fun ProfileAvatarButton(user: UserProfile?, refreshTick: Int, onClick: () -> Unit) {
-    val context = LocalContext.current
-    val avatarFile = remember { com.soundwave.app.ui.screens.localAvatarFile(context) }
+private fun ProfileAvatarButton(user: UserProfile?, avatarPath: String?, onClick: () -> Unit) {
+    val localFile = remember(avatarPath) { avatarPath?.let { java.io.File(it) } }
     Box(
         modifier = Modifier
             .size(40.dp)
@@ -89,28 +92,22 @@ private fun ProfileAvatarButton(user: UserProfile?, refreshTick: Int, onClick: (
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (avatarFile.exists()) {
-            AsyncImage(
-                model = coil.request.ImageRequest.Builder(context)
-                    .data(avatarFile)
-                    .memoryCacheKey("avatar_$refreshTick")
-                    .diskCacheKey("avatar_$refreshTick")
-                    .build(),
+        when {
+            localFile != null && localFile.exists() -> AsyncImage(
+                model = localFile,
                 contentDescription = "Profile",
                 modifier = Modifier.fillMaxSize().clip(CircleShape),
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.High
             )
-        } else if (user?.avatarUrl != null) {
-            AsyncImage(
+            user?.avatarUrl != null -> AsyncImage(
                 model = user.avatarUrl,
                 contentDescription = "Profile",
                 modifier = Modifier.fillMaxSize().clip(CircleShape),
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.High
             )
-        } else {
-            Icon(Icons.Filled.Person, contentDescription = "Profile", tint = Color.White, modifier = Modifier.size(22.dp))
+            else -> Icon(Icons.Filled.Person, contentDescription = "Profile", tint = Color.White, modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -137,8 +134,12 @@ fun HomeScreen(
     onOpenDiagnostics: () -> Unit,
     onMoodClick: (String, String) -> Unit,
     onOpenChart: (String, List<Song>) -> Unit,
-    avatarRefreshTick: Int = 0,
-    onOpenProfile: () -> Unit = {}
+    avatarPath: String? = null,
+    onOpenProfile: () -> Unit = {},
+    workoutPlaylist: List<Song> = emptyList(),
+    trendingTodayPlaylist: List<Song> = emptyList(),
+    rightNowTitle: String? = null,
+    onRightNowTitleChange: (String?) -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SwBg),
@@ -158,7 +159,7 @@ fun HomeScreen(
                     fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier.weight(1f)
                 )
-                ProfileAvatarButton(user = user, refreshTick = avatarRefreshTick, onClick = onOpenProfile)
+                ProfileAvatarButton(user = user, avatarPath = avatarPath, onClick = onOpenProfile)
             }
             Spacer(Modifier.height(4.dp))
             Row(
@@ -258,22 +259,88 @@ fun HomeScreen(
             }
         }
 
-        // ── Your mood ──────────────────────────────────────────────────────────
+        // ── Right Now: time-of-day block, editable title ─────────────────────────
         item {
-            Text(
-                "Right Now",
-                color = Color.White,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
+            val slotIndex = remember { currentTimeSlotIndex() }
+            val isWorkoutWindow = slotIndex == -1
+            val defaultTitle = if (isWorkoutWindow) "Get Moving" else "Right Now"
+            var showEditDialog by remember { mutableStateOf(false) }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth()
+            ) {
+                Text(
+                    rightNowTitle ?: defaultTitle,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Rename",
+                    tint = SwTextTertiary,
+                    modifier = Modifier.size(18.dp).clickable { showEditDialog = true }
+                )
+            }
             Spacer(Modifier.height(12.dp))
-            val activeSlot = remember { timeSlots[currentTimeSlotIndex()] }
-            RightNowBlock(
-                slot = activeSlot,
-                onClick = { onMoodClick(activeSlot.label, activeSlot.query) }
-            )
+
+            if (isWorkoutWindow) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (workoutPlaylist.isNotEmpty()) {
+                        PlaylistCoverCard(
+                            line1 = "Workout",
+                            line2 = "",
+                            coverThumbnail = workoutPlaylist.first().thumbnail,
+                            onClick = { onOpenChart("Workout", workoutPlaylist) }
+                        )
+                    }
+                    if (trendingTodayPlaylist.isNotEmpty()) {
+                        PlaylistCoverCard(
+                            line1 = "Trending",
+                            line2 = "Today",
+                            coverThumbnail = trendingTodayPlaylist.first().thumbnail,
+                            onClick = { onOpenChart("Today's Trending", trendingTodayPlaylist) }
+                        )
+                    }
+                }
+            } else {
+                val activeSlot = timeSlots[slotIndex]
+                RightNowBlock(
+                    slot = activeSlot,
+                    onClick = { onMoodClick(activeSlot.label, activeSlot.query) }
+                )
+            }
             Spacer(Modifier.height(28.dp))
+
+            if (showEditDialog) {
+                var textValue by remember { mutableStateOf(rightNowTitle ?: defaultTitle) }
+                AlertDialog(
+                    onDismissRequest = { showEditDialog = false },
+                    title = { Text("Rename section") },
+                    text = {
+                        OutlinedTextField(
+                            value = textValue,
+                            onValueChange = { textValue = it },
+                            singleLine = true,
+                            placeholder = { Text(defaultTitle) }
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            onRightNowTitleChange(textValue)
+                            showEditDialog = false
+                        }) { Text("Save") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showEditDialog = false }) { Text("Cancel") }
+                    }
+                )
+            }
         }
 
         // ── Charts: unified playlist-cover row (Spotify-style) ───────────────────

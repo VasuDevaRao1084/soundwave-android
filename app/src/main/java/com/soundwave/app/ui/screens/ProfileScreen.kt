@@ -4,12 +4,12 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
@@ -17,19 +17,19 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.soundwave.app.data.UserProfile
 import com.soundwave.app.ui.theme.SwBg
 import com.soundwave.app.ui.theme.SwPurple
@@ -38,35 +38,35 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Local avatar file path — a fixed filename in app-private storage, so we
- * never need to persist a content:// URI (those can lose access permission
- * after the picker closes / app restart). We copy the picked image's bytes
- * in once, then always read from this same local file afterward.
+ * Writes the picked image to a brand-new, uniquely-named file rather than
+ * overwriting a fixed filename. A new file path means Coil (or any image
+ * loader/cache) sees a genuinely different resource — no stale-cache
+ * possibility, no manual cache-key juggling needed. The path itself is
+ * persisted (see AppViewModel.avatarPath) so it survives app restarts.
  */
-fun localAvatarFile(context: android.content.Context): File =
-    File(context.filesDir, "profile_avatar.jpg")
+fun saveNewAvatarFile(context: android.content.Context, uri: Uri): String {
+    val file = File(context.filesDir, "avatar_${System.currentTimeMillis()}.jpg")
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        FileOutputStream(file).use { output -> input.copyTo(output) }
+    }
+    return file.absolutePath
+}
 
 @Composable
 fun ProfileScreen(
     user: UserProfile?,
+    avatarPath: String?,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
-    onAvatarUpdated: () -> Unit
+    onAvatarPicked: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val avatarFile = remember { localAvatarFile(context) }
-    // Bumped after a new photo is saved so Coil re-reads the file instead of
-    // serving a stale cached bitmap for the same file path.
-    var avatarVersion by remember { mutableStateOf(avatarFile.lastModified()) }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
             try {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(avatarFile).use { output -> input.copyTo(output) }
-                }
-                avatarVersion = System.currentTimeMillis()
-                onAvatarUpdated()
+                val newPath = saveNewAvatarFile(context, uri)
+                onAvatarPicked(newPath)
             } catch (e: Exception) {
                 com.soundwave.app.data.ErrorLog.log(context, "PROFILE", "Avatar save failed: ${e.message}")
             }
@@ -108,28 +108,23 @@ fun ProfileScreen(
                     .border(3.dp, Color.White.copy(alpha = 0.15f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                if (avatarFile.exists()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(avatarFile)
-                            .memoryCacheKey("avatar_$avatarVersion")
-                            .diskCacheKey("avatar_$avatarVersion")
-                            .build(),
+                val localFile = avatarPath?.let { File(it) }
+                when {
+                    localFile != null && localFile.exists() -> AsyncImage(
+                        model = localFile,
                         contentDescription = "Profile photo",
                         modifier = Modifier.fillMaxSize().clip(CircleShape),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        contentScale = ContentScale.Crop,
                         filterQuality = FilterQuality.High
                     )
-                } else if (user?.avatarUrl != null) {
-                    AsyncImage(
+                    user?.avatarUrl != null -> AsyncImage(
                         model = user.avatarUrl,
                         contentDescription = "Profile photo",
                         modifier = Modifier.fillMaxSize().clip(CircleShape),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        contentScale = ContentScale.Crop,
                         filterQuality = FilterQuality.High
                     )
-                } else {
-                    Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
+                    else -> Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
                 }
             }
             // Edit/camera badge — bottom-right of the avatar circle.
@@ -184,7 +179,7 @@ fun ProfileScreen(
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
                 .padding(bottom = 40.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(Color(0xFF1A1730))
                 .clickable(onClick = onSignOut)
                 .padding(horizontal = 24.dp, vertical = 12.dp),

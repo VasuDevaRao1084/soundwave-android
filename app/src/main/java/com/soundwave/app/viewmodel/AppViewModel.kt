@@ -52,6 +52,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }.apply()
     }
 
+    // ── Profile photo ─────────────────────────────────────────────────
+    // Each pick writes to a NEW uniquely-named file rather than overwriting a
+    // fixed filename — that way Coil (or any image loader) sees a genuinely
+    // different path/URI and can never serve a stale cached bitmap for the
+    // old photo. The path itself is persisted so it survives app restarts.
+    private val _avatarPath = MutableStateFlow(prefs.getString("avatar_path", null))
+    val avatarPath: StateFlow<String?> = _avatarPath.asStateFlow()
+
+    fun setAvatarPath(path: String) {
+        _avatarPath.value = path
+        prefs.edit().putString("avatar_path", path).apply()
+    }
+
+    // ── "Right Now" section — user-editable title ───────────────────────
+    private val _rightNowTitle = MutableStateFlow(prefs.getString("right_now_title", null))
+    val rightNowTitle: StateFlow<String?> = _rightNowTitle.asStateFlow()
+
+    fun setRightNowTitle(title: String?) {
+        val trimmed = title?.trim()?.takeIf { it.isNotEmpty() }
+        _rightNowTitle.value = trimmed
+        prefs.edit().putString("right_now_title", trimmed).apply()
+    }
+
     // ── Library ───────────────────────────────────────────────────────
     private val _likedSongs = MutableStateFlow<List<Song>>(emptyList())
     val likedSongs: StateFlow<List<Song>> = _likedSongs.asStateFlow()
@@ -84,6 +107,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         const val MOST_SEARCHED_TELUGU = "OEvOb-ZbGV-uCJW60TJk1Q__"
         const val MOST_SEARCHED_HINDI = "csv-SfcHUmHc1EngHtQQ2g__"
         const val MOST_SEARCHED_ENGLISH = "xUOBWZUG6AgGSw2I1RxdhQ__"
+        const val WORKOUT = "uP7iDKATo,I9QYQLs6kZbg__"
+        const val TRENDING_TODAY = "I3kvhipIy73uCJW60TJk1Q__"
     }
 
     private val _topTelugu = MutableStateFlow<List<Song>>(emptyList())
@@ -99,6 +124,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val mostSearchedHindi: StateFlow<List<Song>> = _mostSearchedHindi.asStateFlow()
     private val _mostSearchedEnglish = MutableStateFlow<List<Song>>(emptyList())
     val mostSearchedEnglish: StateFlow<List<Song>> = _mostSearchedEnglish.asStateFlow()
+
+    private val _workoutPlaylist = MutableStateFlow<List<Song>>(emptyList())
+    val workoutPlaylist: StateFlow<List<Song>> = _workoutPlaylist.asStateFlow()
+    private val _trendingTodayPlaylist = MutableStateFlow<List<Song>>(emptyList())
+    val trendingTodayPlaylist: StateFlow<List<Song>> = _trendingTodayPlaylist.asStateFlow()
 
     // ── Mood playlists ─────────────────────────────────────────────────────────
     // Tapping a mood chip opens a real song list (like a playlist), not a
@@ -155,6 +185,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try { _mostSearchedEnglish.value = SaavnApi.getPlaylistSongs(PlaylistTokens.MOST_SEARCHED_ENGLISH) } catch (e: Exception) {
                 com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Most searched English load failed: ${e.message}")
+            }
+        }
+        viewModelScope.launch {
+            try { _workoutPlaylist.value = SaavnApi.getPlaylistSongs(PlaylistTokens.WORKOUT) } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Workout playlist load failed: ${e.message}")
+            }
+        }
+        viewModelScope.launch {
+            try { _trendingTodayPlaylist.value = SaavnApi.getPlaylistSongs(PlaylistTokens.TRENDING_TODAY) } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "TOP_CHARTS", "Trending Today playlist load failed: ${e.message}")
             }
         }
     }

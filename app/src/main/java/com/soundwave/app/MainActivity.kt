@@ -326,6 +326,10 @@ private enum class Tab { HOME, SEARCH, LIBRARY, ALBUMS }
 @Composable
 private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val user by vm.user.collectAsState()
+    val avatarPath by vm.avatarPath.collectAsState()
+    val rightNowTitle by vm.rightNowTitle.collectAsState()
+    val workoutPlaylist by vm.workoutPlaylist.collectAsState()
+    val trendingTodayPlaylist by vm.trendingTodayPlaylist.collectAsState()
     val topTelugu by vm.topTelugu.collectAsState()
     val topHindi by vm.topHindi.collectAsState()
     val topEnglish by vm.topEnglish.collectAsState()
@@ -377,7 +381,6 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var showSoundSettings by remember { mutableStateOf(false) }
     var openChart by remember { mutableStateOf<Pair<String, List<Song>>?>(null) }
     var showProfile by remember { mutableStateOf(false) }
-    var avatarRefreshTick by remember { mutableStateOf(0) }
 
     fun goToTab(t: Tab) {
         showSoundSettings = false
@@ -432,13 +435,14 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     )
                     showProfile -> ProfileScreen(
                         user = user,
+                        avatarPath = avatarPath,
                         onBack = { showProfile = false },
                         onSignOut = {
                             GoogleAuth.client(context).signOut()
                             vm.signOut()
                             showProfile = false
                         },
-                        onAvatarUpdated = { avatarRefreshTick++ }
+                        onAvatarPicked = { path -> vm.setAvatarPath(path) }
                     )
                     showDiagnostics -> {
                         val context = androidx.compose.ui.platform.LocalContext.current
@@ -505,8 +509,12 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             onOpenDiagnostics = { showDiagnostics = true },
                             onMoodClick = { title, moodQuery -> vm.openMoodPlaylist(title, moodQuery) },
                             onOpenChart = { title, songs -> openChart = title to songs },
-                            avatarRefreshTick = avatarRefreshTick,
-                            onOpenProfile = { showProfile = true }
+                            avatarPath = avatarPath,
+                            onOpenProfile = { showProfile = true },
+                            workoutPlaylist = workoutPlaylist,
+                            trendingTodayPlaylist = trendingTodayPlaylist,
+                            rightNowTitle = rightNowTitle,
+                            onRightNowTitleChange = { vm.setRightNowTitle(it) }
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbums.map { it.id }.toSet(),
