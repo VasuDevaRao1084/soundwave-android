@@ -14,8 +14,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.BugReport
@@ -76,6 +78,44 @@ private fun currentTimeSlotIndex(): Int {
 }
 
 @Composable
+private fun ProfileAvatarButton(user: UserProfile?, refreshTick: Int, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val avatarFile = remember { com.soundwave.app.ui.screens.localAvatarFile(context) }
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(SwPurple, Color(0xFF6C2FF2))))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (avatarFile.exists()) {
+            AsyncImage(
+                model = coil.request.ImageRequest.Builder(context)
+                    .data(avatarFile)
+                    .memoryCacheKey("avatar_$refreshTick")
+                    .diskCacheKey("avatar_$refreshTick")
+                    .build(),
+                contentDescription = "Profile",
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.High
+            )
+        } else if (user?.avatarUrl != null) {
+            AsyncImage(
+                model = user.avatarUrl,
+                contentDescription = "Profile",
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.High
+            )
+        } else {
+            Icon(Icons.Filled.Person, contentDescription = "Profile", tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+@Composable
 fun HomeScreen(
     user: UserProfile?,
     recentlyPlayed: List<Song>,
@@ -96,7 +136,9 @@ fun HomeScreen(
     onOpenAlbum: (SavedAlbum) -> Unit,
     onOpenDiagnostics: () -> Unit,
     onMoodClick: (String, String) -> Unit,
-    onOpenChart: (String, List<Song>) -> Unit
+    onOpenChart: (String, List<Song>) -> Unit,
+    avatarRefreshTick: Int = 0,
+    onOpenProfile: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SwBg),
@@ -105,13 +147,19 @@ fun HomeScreen(
         // ── Header ─────────────────────────────────────────────────────────────
         item {
             Spacer(Modifier.height(52.dp))
-            Text(
-                "Good ${greeting()}",
-                color = Color.White,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth()
+            ) {
+                Text(
+                    "Good ${greeting()}",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.weight(1f)
+                )
+                ProfileAvatarButton(user = user, refreshTick = avatarRefreshTick, onClick = onOpenProfile)
+            }
             Spacer(Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -220,21 +268,11 @@ fun HomeScreen(
                 modifier = Modifier.padding(horizontal = 20.dp)
             )
             Spacer(Modifier.height(12.dp))
-            val activeIndex = remember { currentTimeSlotIndex() }
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                timeSlots.forEachIndexed { index, slot ->
-                    TimeSlotTile(
-                        slot = slot,
-                        isNow = index == activeIndex,
-                        onClick = { onMoodClick(slot.label, slot.query) }
-                    )
-                }
-            }
+            val activeSlot = remember { timeSlots[currentTimeSlotIndex()] }
+            RightNowBlock(
+                slot = activeSlot,
+                onClick = { onMoodClick(activeSlot.label, activeSlot.query) }
+            )
             Spacer(Modifier.height(28.dp))
         }
 
@@ -690,40 +728,33 @@ private fun timeSlotGradient(label: String): List<Color> = when (label) {
 }
 
 @Composable
-private fun TimeSlotTile(slot: TimeSlot, isNow: Boolean, onClick: () -> Unit) {
+private fun RightNowBlock(slot: TimeSlot, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(width = 128.dp, height = 84.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .height(120.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(Brush.linearGradient(timeSlotGradient(slot.label)))
-            .then(
-                if (isNow) Modifier.border(2.dp, Color.White, RoundedCornerShape(14.dp))
-                else Modifier
-            )
             .clickable(onClick = onClick)
-            .padding(12.dp)
+            .padding(18.dp)
     ) {
-        Text(slot.emoji, fontSize = 18.sp, modifier = Modifier.align(Alignment.TopStart))
-        Text(
-            slot.label,
-            color = Color.White,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.BottomStart)
-        )
-        if (isNow) {
-            Text(
-                "NOW",
-                color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .padding(horizontal = 5.dp, vertical = 2.dp)
-            )
+        Text(slot.emoji, fontSize = 30.sp, modifier = Modifier.align(Alignment.TopStart))
+        Column(modifier = Modifier.align(Alignment.BottomStart)) {
+            Text(slot.label, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Picked for right now", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
         }
+        Icon(
+            Icons.Filled.PlayArrow,
+            contentDescription = "Play",
+            tint = Color.White,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.25f))
+                .padding(8.dp)
+        )
     }
 }
 

@@ -40,6 +40,7 @@ import com.soundwave.app.ui.screens.LibraryScreen
 import com.soundwave.app.ui.screens.LoginScreen
 import com.soundwave.app.ui.screens.NowPlayingScreen
 import com.soundwave.app.ui.screens.PlaylistDetailScreen
+import com.soundwave.app.ui.screens.ProfileScreen
 import com.soundwave.app.ui.screens.SearchScreen
 import com.soundwave.app.ui.theme.SoundWaveTheme
 import com.soundwave.app.ui.theme.SwSurfaceLight
@@ -375,17 +376,14 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var showDiagnostics by remember { mutableStateOf(false) }
     var showSoundSettings by remember { mutableStateOf(false) }
     var openChart by remember { mutableStateOf<Pair<String, List<Song>>?>(null) }
+    var showProfile by remember { mutableStateOf(false) }
+    var avatarRefreshTick by remember { mutableStateOf(0) }
 
-    // Switching bottom-nav tabs should always take you to that tab's content —
-    // any currently-open overlay screen (Sound Settings, Diagnostics, Album
-    // Search, an opened Album/Playlist/Chart/Mood playlist) needs to be
-    // dismissed first, otherwise the content `when` block below keeps showing
-    // the overlay regardless of which tab is selected, since those checks run
-    // before the tab check.
     fun goToTab(t: Tab) {
         showSoundSettings = false
         showDiagnostics = false
         showAlbumSearch = false
+        showProfile = false
         openAlbum = null
         openPlaylist = null
         openChart = null
@@ -431,6 +429,16 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         onBack = { showAlbumSearch = false },
                         onSaveAlbum = { vm.saveAlbum(it); showAlbumSearch = false },
                         onOpenAlbum = { openAlbum = it; showAlbumSearch = false }
+                    )
+                    showProfile -> ProfileScreen(
+                        user = user,
+                        onBack = { showProfile = false },
+                        onSignOut = {
+                            GoogleAuth.client(context).signOut()
+                            vm.signOut()
+                            showProfile = false
+                        },
+                        onAvatarUpdated = { avatarRefreshTick++ }
                     )
                     showDiagnostics -> {
                         val context = androidx.compose.ui.platform.LocalContext.current
@@ -496,7 +504,9 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             onOpenAlbum = { openAlbum = it },
                             onOpenDiagnostics = { showDiagnostics = true },
                             onMoodClick = { title, moodQuery -> vm.openMoodPlaylist(title, moodQuery) },
-                            onOpenChart = { title, songs -> openChart = title to songs }
+                            onOpenChart = { title, songs -> openChart = title to songs },
+                            avatarRefreshTick = avatarRefreshTick,
+                            onOpenProfile = { showProfile = true }
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbums.map { it.id }.toSet(),
