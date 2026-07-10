@@ -65,16 +65,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putString("avatar_path", path).apply()
     }
 
-    // ── "Right Now" section — user-editable title ───────────────────────
-    private val _rightNowTitle = MutableStateFlow(prefs.getString("right_now_title", null))
-    val rightNowTitle: StateFlow<String?> = _rightNowTitle.asStateFlow()
-
-    fun setRightNowTitle(title: String?) {
-        val trimmed = title?.trim()?.takeIf { it.isNotEmpty() }
-        _rightNowTitle.value = trimmed
-        prefs.edit().putString("right_now_title", trimmed).apply()
-    }
-
     // ── Library ───────────────────────────────────────────────────────
     private val _likedSongs = MutableStateFlow<List<Song>>(emptyList())
     val likedSongs: StateFlow<List<Song>> = _likedSongs.asStateFlow()
@@ -296,6 +286,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _user.value = profile
         persistUser(profile)
         if (profile != null) loadUserData(profile.id)
+    }
+
+    /**
+     * Updates the display name both locally (instant UI update) and
+     * server-side against the Supabase account (so it survives an
+     * uninstall/reinstall — unlike the avatar photo, this doesn't need any
+     * file storage, just a small text field on the existing auth session).
+     */
+    fun updateDisplayName(newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        _user.value = _user.value?.copy(name = trimmed)
+        persistUser(_user.value)
+        viewModelScope.launch {
+            try {
+                com.soundwave.app.data.SupabaseAuth.updateDisplayName(trimmed)
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "PROFILE", "Display name sync failed: ${e.message}")
+            }
+        }
     }
 
     fun signOut() {

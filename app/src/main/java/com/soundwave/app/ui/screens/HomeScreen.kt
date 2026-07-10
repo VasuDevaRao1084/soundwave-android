@@ -52,35 +52,6 @@ import com.soundwave.app.ui.theme.SwTextSecondary
 import com.soundwave.app.ui.theme.SwTextTertiary
 import com.soundwave.app.ui.theme.extractAlbumTheme
 
-// JioSaavn's API is a plain text search, not a curated mood/playlist system —
-// so each slot currently maps to a keyword search likely to surface matching
-// songs (titles/albums literally using these words), rather than an
-// editorially curated playlist like Spotify's. This is a placeholder until
-// real JioSaavn playlist tokens (like the Charts tokens) are wired in per
-// slot — swap the `query` values for `getPlaylistSongs(token)` calls once
-// real playlist links are provided.
-private data class TimeSlot(val label: String, val emoji: String, val query: String, val startHour: Int, val endHour: Int)
-
-// The 11am–5pm window uses two real curated JioSaavn playlists (Workout +
-// Trending Today) instead of a keyword-search TimeSlot — so it's handled as
-// a special case rather than living in this list.
-private val timeSlots = listOf(
-    TimeSlot("Morning", "☀️", "morning melody", startHour = 5, endHour = 11),
-    TimeSlot("Evening", "🌇", "evening chill", startHour = 17, endHour = 21),
-    TimeSlot("Night", "🌙", "late night vibes", startHour = 21, endHour = 5)
-)
-
-// Returns the matching TimeSlot index, or -1 during the 11am–5pm workout window.
-private fun currentTimeSlotIndex(): Int {
-    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-    timeSlots.forEachIndexed { i, slot ->
-        val inRange = if (slot.startHour < slot.endHour) hour in slot.startHour until slot.endHour
-        else hour >= slot.startHour || hour < slot.endHour // wraps past midnight (Night: 21–5)
-        if (inRange) return i
-    }
-    return -1
-}
-
 @Composable
 private fun ProfileAvatarButton(user: UserProfile?, avatarPath: String?, onClick: () -> Unit) {
     val localFile = remember(avatarPath) { avatarPath?.let { java.io.File(it) } }
@@ -137,9 +108,7 @@ fun HomeScreen(
     avatarPath: String? = null,
     onOpenProfile: () -> Unit = {},
     workoutPlaylist: List<Song> = emptyList(),
-    trendingTodayPlaylist: List<Song> = emptyList(),
-    rightNowTitle: String? = null,
-    onRightNowTitleChange: (String?) -> Unit = {}
+    trendingTodayPlaylist: List<Song> = emptyList()
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SwBg),
@@ -259,34 +228,17 @@ fun HomeScreen(
             }
         }
 
-        // ── Right Now: time-of-day block, editable title ─────────────────────────
-        item {
-            val slotIndex = remember { currentTimeSlotIndex() }
-            val isWorkoutWindow = slotIndex == -1
-            val defaultTitle = if (isWorkoutWindow) "Get Moving" else "Right Now"
-            var showEditDialog by remember { mutableStateOf(false) }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth()
-            ) {
+        // ── Workout & Trending Today ──────────────────────────────────────────────
+        if (workoutPlaylist.isNotEmpty() || trendingTodayPlaylist.isNotEmpty()) {
+            item {
                 Text(
-                    rightNowTitle ?: defaultTitle,
+                    "Workout & Trending",
                     color = Color.White,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.padding(horizontal = 20.dp)
                 )
-                Icon(
-                    Icons.Filled.Edit,
-                    contentDescription = "Rename",
-                    tint = SwTextTertiary,
-                    modifier = Modifier.size(18.dp).clickable { showEditDialog = true }
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-
-            if (isWorkoutWindow) {
+                Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -308,38 +260,7 @@ fun HomeScreen(
                         )
                     }
                 }
-            } else {
-                val activeSlot = timeSlots[slotIndex]
-                RightNowBlock(
-                    slot = activeSlot,
-                    onClick = { onMoodClick(activeSlot.label, activeSlot.query) }
-                )
-            }
-            Spacer(Modifier.height(28.dp))
-
-            if (showEditDialog) {
-                var textValue by remember { mutableStateOf(rightNowTitle ?: defaultTitle) }
-                AlertDialog(
-                    onDismissRequest = { showEditDialog = false },
-                    title = { Text("Rename section") },
-                    text = {
-                        OutlinedTextField(
-                            value = textValue,
-                            onValueChange = { textValue = it },
-                            singleLine = true,
-                            placeholder = { Text(defaultTitle) }
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            onRightNowTitleChange(textValue)
-                            showEditDialog = false
-                        }) { Text("Save") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showEditDialog = false }) { Text("Cancel") }
-                    }
-                )
+                Spacer(Modifier.height(28.dp))
             }
         }
 
@@ -783,45 +704,6 @@ private fun CompactChartChip(song: Song, isPlaying: Boolean, onClick: () -> Unit
                 overflow = TextOverflow.Ellipsis
             )
         }
-    }
-}
-
-@Composable
-private fun timeSlotGradient(label: String): List<Color> = when (label) {
-    "Morning" -> listOf(Color(0xFFFFB347), Color(0xFFFF6F61))
-    "Afternoon" -> listOf(Color(0xFF4FACFE), Color(0xFF00C6A2))
-    "Evening" -> listOf(Color(0xFFFF7E5F), Color(0xFF7B2FF7))
-    else -> listOf(Color(0xFF16213E), Color(0xFF0F0C29)) // Night
-}
-
-@Composable
-private fun RightNowBlock(slot: TimeSlot, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .height(120.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(timeSlotGradient(slot.label)))
-            .clickable(onClick = onClick)
-            .padding(18.dp)
-    ) {
-        Text(slot.emoji, fontSize = 30.sp, modifier = Modifier.align(Alignment.TopStart))
-        Column(modifier = Modifier.align(Alignment.BottomStart)) {
-            Text(slot.label, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-            Text("Picked for right now", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
-        }
-        Icon(
-            Icons.Filled.PlayArrow,
-            contentDescription = "Play",
-            tint = Color.White,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.25f))
-                .padding(8.dp)
-        )
     }
 }
 

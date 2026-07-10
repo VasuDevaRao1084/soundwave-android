@@ -48,4 +48,54 @@ object SupabaseAuth {
             }
         })
     }
+
+    /**
+     * Reads back the account's saved display_name (if any) from Supabase
+     * Auth's user_metadata. This is what lets a custom name survive an
+     * uninstall + reinstall — it's stored server-side against the account,
+     * not on-device, so signing back in with the same Google account pulls
+     * it straight back.
+     */
+    suspend fun fetchDisplayName(): String? = suspendCancellableCoroutine { cont ->
+        val req = Request.Builder()
+            .url("$SUPABASE_URL/auth/v1/user")
+            .addHeader("apikey", ANON_KEY)
+            .addHeader("Authorization", "Bearer ${SupabaseClient.accessToken ?: ANON_KEY}")
+            .build()
+        client.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resume(null)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                try {
+                    val json = JSONObject(response.body?.string() ?: "{}")
+                    val name = json.optJSONObject("user_metadata")?.optString("display_name")?.ifBlank { null }
+                    if (cont.isActive) cont.resume(name)
+                } catch (e: Exception) {
+                    if (cont.isActive) cont.resume(null)
+                }
+            }
+        })
+    }
+
+    /** Saves a custom display name against the account server-side (survives reinstall). */
+    suspend fun updateDisplayName(name: String): Boolean = suspendCancellableCoroutine { cont ->
+        val payload = JSONObject().put("data", JSONObject().put("display_name", name))
+        val body = payload.toString().toRequestBody("application/json".toMediaType())
+        val req = Request.Builder()
+            .url("$SUPABASE_URL/auth/v1/user")
+            .addHeader("apikey", ANON_KEY)
+            .addHeader("Authorization", "Bearer ${SupabaseClient.accessToken ?: ANON_KEY}")
+            .addHeader("Content-Type", "application/json")
+            .put(body)
+            .build()
+        client.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resume(false)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                if (cont.isActive) cont.resume(response.isSuccessful)
+            }
+        })
+    }
 }

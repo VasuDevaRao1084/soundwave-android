@@ -64,7 +64,12 @@ class MainActivity : ComponentActivity() {
                 lifecycleScope.launch {
                     val userId = com.soundwave.app.data.SupabaseAuth.signInWithGoogleIdToken(idToken)
                     val profile = GoogleAuth.toUserProfile(account)
-                    vm.setUser(if (userId != null) profile.copy(id = userId) else profile)
+                    val savedName = try { com.soundwave.app.data.SupabaseAuth.fetchDisplayName() } catch (e: Exception) { null }
+                    val finalProfile = profile.copy(
+                        id = userId ?: profile.id,
+                        name = savedName ?: profile.name
+                    )
+                    vm.setUser(finalProfile)
                 }
             }
         } catch (e: ApiException) {
@@ -327,7 +332,6 @@ private enum class Tab { HOME, SEARCH, LIBRARY, ALBUMS }
 private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val user by vm.user.collectAsState()
     val avatarPath by vm.avatarPath.collectAsState()
-    val rightNowTitle by vm.rightNowTitle.collectAsState()
     val workoutPlaylist by vm.workoutPlaylist.collectAsState()
     val trendingTodayPlaylist by vm.trendingTodayPlaylist.collectAsState()
     val topTelugu by vm.topTelugu.collectAsState()
@@ -442,7 +446,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             vm.signOut()
                             showProfile = false
                         },
-                        onAvatarPicked = { path -> vm.setAvatarPath(path) }
+                        onAvatarPicked = { path -> vm.setAvatarPath(path) },
+                        onNameChanged = { name -> vm.updateDisplayName(name) }
                     )
                     showDiagnostics -> {
                         val context = androidx.compose.ui.platform.LocalContext.current
@@ -512,9 +517,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             avatarPath = avatarPath,
                             onOpenProfile = { showProfile = true },
                             workoutPlaylist = workoutPlaylist,
-                            trendingTodayPlaylist = trendingTodayPlaylist,
-                            rightNowTitle = rightNowTitle,
-                            onRightNowTitleChange = { vm.setRightNowTitle(it) }
+                            trendingTodayPlaylist = trendingTodayPlaylist
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbums.map { it.id }.toSet(),

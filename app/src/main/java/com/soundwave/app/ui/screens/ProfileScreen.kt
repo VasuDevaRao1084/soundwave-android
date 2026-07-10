@@ -13,11 +13,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,9 +63,11 @@ fun ProfileScreen(
     avatarPath: String?,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
-    onAvatarPicked: (String) -> Unit
+    onAvatarPicked: (String) -> Unit,
+    onNameChanged: (String) -> Unit
 ) {
     val context = LocalContext.current
+    var showEditName by remember { mutableStateOf(false) }
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
@@ -153,6 +160,19 @@ fun ProfileScreen(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable { showEditName = true }
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Edit, contentDescription = "Edit name", tint = SwPurple, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Edit name", color = SwPurple, fontSize = 12.sp)
+        }
         if (user?.email != null) {
             Spacer(Modifier.height(4.dp))
             Text(
@@ -189,5 +209,30 @@ fun ProfileScreen(
             Spacer(Modifier.width(8.dp))
             Text("Sign out", color = Color(0xFFFF6B6B), fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
+    }
+
+    if (showEditName) {
+        var textValue by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(user?.name ?: "") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showEditName = false },
+            title = { Text("Edit name") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = textValue,
+                    onValueChange = { textValue = it },
+                    singleLine = true,
+                    placeholder = { Text("Your name") }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    if (textValue.isNotBlank()) onNameChanged(textValue)
+                    showEditName = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showEditName = false }) { Text("Cancel") }
+            }
+        )
     }
 }
