@@ -40,13 +40,15 @@ fun FriendsScreen(
     searchResult: FriendProfile?,
     searchStatus: String?,
     friendPlaylists: List<Playlist>,
+    actionError: String?,
     onBack: () -> Unit,
     onSearch: (String) -> Unit,
     onClearSearch: () -> Unit,
     onSendRequest: (FriendProfile) -> Unit,
     onRespond: (String, Boolean) -> Unit,
     onOpenFriendPlaylists: (String) -> Unit,
-    onImportPlaylist: (Playlist) -> Unit
+    onImportPlaylist: (Playlist) -> Unit,
+    onClearActionError: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var expandedFriendId by remember { mutableStateOf<String?>(null) }
@@ -68,6 +70,22 @@ fun FriendsScreen(
             )
             Spacer(Modifier.width(16.dp))
             Text("Friends", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        }
+
+        actionError?.let { error ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF3A1620))
+                    .clickable { onClearActionError() }
+                    .padding(12.dp)
+            ) {
+                Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = Color(0xFFFF8A8A), modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.height(8.dp))
         }
 
         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {

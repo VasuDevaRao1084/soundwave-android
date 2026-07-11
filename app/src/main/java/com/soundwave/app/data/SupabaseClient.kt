@@ -222,19 +222,54 @@ object SupabaseClient {
             }
         })
     }.let { rawRows ->
-        // Resolve each row's "other user" profile.
+        // Resolve every row's "other user" profile with ONE batched query
+        // (id=in.(...)) instead of one network round-trip per row — avoids
+        // serial N+1 lookups that made the Friends screen feel slow to load.
+        val otherIds = rawRows.map { row ->
+            val senderId = row.optString("sender_id")
+            val receiverId = row.optString("receiver_id")
+            if (receiverId == userId) senderId else receiverId
+        }.distinct()
+        val profilesById = getProfilesByIds(otherIds).associateBy { it.id }
+
         rawRows.mapNotNull { row ->
             val senderId = row.optString("sender_id")
             val receiverId = row.optString("receiver_id")
             val isIncoming = receiverId == userId
             val otherId = if (isIncoming) senderId else receiverId
-            val otherProfile = getProfileById(otherId) ?: return@mapNotNull null
+            val otherProfile = profilesById[otherId] ?: return@mapNotNull null
             FriendRequestItem(
                 requestId = row.optString("id"),
                 otherUser = otherProfile,
                 status = row.optString("status"),
                 isIncoming = isIncoming
             )
+        }
+    }
+
+    /** Batched version of getProfileById — one query for multiple user IDs. */
+    suspend fun getProfilesByIds(userIds: List<String>): List<FriendProfile> {
+        if (userIds.isEmpty()) return emptyList()
+        return suspendCancellableCoroutine { cont ->
+            val idList = userIds.joinToString(",")
+            val req = authHeader(
+                Request.Builder().url("$SUPABASE_URL/rest/v1/profiles?id=in.($idList)&select=*")
+            ).build()
+            client.newCall(req).enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                    if (cont.isActive) cont.resume(emptyList())
+                }
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    try {
+                        val arr = JSONArray(response.body?.string() ?: "[]")
+                        val list = mutableListOf<FriendProfile>()
+                        for (i in 0 until arr.length()) list.add(parseProfile(arr.getJSONObject(i)))
+                        if (cont.isActive) cont.resume(list)
+                    } catch (e: Exception) {
+                        if (cont.isActive) cont.resume(emptyList())
+                    }
+                }
+            })
         }
     }
 

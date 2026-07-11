@@ -359,6 +359,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _friendSearchStatus = MutableStateFlow<String?>(null) // null | "searching" | "not_found" | "self"
     val friendSearchStatus: StateFlow<String?> = _friendSearchStatus.asStateFlow()
 
+    private val _friendActionError = MutableStateFlow<String?>(null)
+    val friendActionError: StateFlow<String?> = _friendActionError.asStateFlow()
+
+    fun clearFriendActionError() { _friendActionError.value = null }
+
     fun loadFriendRequests() {
         val me = _user.value ?: return
         viewModelScope.launch {
@@ -400,10 +405,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val me = _user.value ?: return
         viewModelScope.launch {
             try {
-                com.soundwave.app.data.SupabaseClient.sendFriendRequest(me.id, receiver.id)
-                loadFriendRequests()
-                clearFriendSearch()
+                val success = com.soundwave.app.data.SupabaseClient.sendFriendRequest(me.id, receiver.id)
+                if (success) {
+                    loadFriendRequests()
+                    clearFriendSearch()
+                } else {
+                    _friendActionError.value = "Couldn't send request — check your Supabase RLS policies are set up (see setup step)."
+                    com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "sendFriendRequest returned failure for ${receiver.email}")
+                }
             } catch (e: Exception) {
+                _friendActionError.value = "Couldn't send request: ${e.message}"
                 com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Send request failed: ${e.message}")
             }
         }

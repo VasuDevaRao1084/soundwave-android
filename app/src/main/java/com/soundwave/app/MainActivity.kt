@@ -339,6 +339,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val friendSearchResult by vm.friendSearchResult.collectAsState()
     val friendSearchStatus by vm.friendSearchStatus.collectAsState()
     val friendPlaylists by vm.friendPlaylists.collectAsState()
+    val friendActionError by vm.friendActionError.collectAsState()
     val topTelugu by vm.topTelugu.collectAsState()
     val topHindi by vm.topHindi.collectAsState()
     val topEnglish by vm.topEnglish.collectAsState()
@@ -455,20 +456,22 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         },
                         onAvatarPicked = { path -> vm.setAvatarPath(path) },
                         onNameChanged = { name -> vm.updateDisplayName(name) },
-                        onOpenFriends = { showProfile = false; showFriends = true }
+                        onOpenFriends = { showProfile = false; showFriends = true; vm.loadFriendRequests() }
                     )
                     showFriends -> FriendsScreen(
                         friendRequests = friendRequests,
                         searchResult = friendSearchResult,
                         searchStatus = friendSearchStatus,
                         friendPlaylists = friendPlaylists,
+                        actionError = friendActionError,
                         onBack = { showFriends = false; showProfile = true },
                         onSearch = { email -> vm.searchFriendByEmail(email) },
                         onClearSearch = { vm.clearFriendSearch() },
                         onSendRequest = { profile -> vm.sendFriendRequest(profile) },
                         onRespond = { id, accept -> vm.respondToFriendRequest(id, accept) },
                         onOpenFriendPlaylists = { friendId -> vm.loadFriendPlaylists(friendId) },
-                        onImportPlaylist = { playlist -> vm.importFriendPlaylist(playlist) }
+                        onImportPlaylist = { playlist -> vm.importFriendPlaylist(playlist) },
+                        onClearActionError = { vm.clearFriendActionError() }
                     )
                     showDiagnostics -> {
                         val context = androidx.compose.ui.platform.LocalContext.current
