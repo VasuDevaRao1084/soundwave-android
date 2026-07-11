@@ -64,7 +64,8 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onSignOut: () -> Unit,
     onAvatarPicked: (String) -> Unit,
-    onNameChanged: (String) -> Unit
+    onNameChanged: (String) -> Unit,
+    onOpenFriends: () -> Unit
 ) {
     val context = LocalContext.current
     var showEditName by remember { mutableStateOf(false) }
@@ -191,6 +192,25 @@ fun ProfileScreen(
             fontSize = 12.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
+
+        Spacer(Modifier.height(24.dp))
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF1A1730))
+                .clickable(onClick = onOpenFriends)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Person, contentDescription = null, tint = SwPurple, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Text("Friends", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text("→", color = SwTextSecondary, fontSize = 15.sp)
+        }
 
         Spacer(Modifier.weight(1f))
 

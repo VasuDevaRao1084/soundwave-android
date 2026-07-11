@@ -20,3 +20,17 @@ data class UserProfile(
     val name: String?,
     val avatarUrl: String?
 )
+
+data class FriendProfile(
+    val id: String,
+    val email: String,
+    val displayName: String?,
+    val avatarUrl: String?
+)
+
+data class FriendRequestItem(
+    val requestId: String,
+    val otherUser: FriendProfile,
+    val status: String, // pending | accepted | declined
+    val isIncoming: Boolean // true if the OTHER user sent it to us
+)

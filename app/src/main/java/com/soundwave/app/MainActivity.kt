@@ -41,6 +41,7 @@ import com.soundwave.app.ui.screens.LoginScreen
 import com.soundwave.app.ui.screens.NowPlayingScreen
 import com.soundwave.app.ui.screens.PlaylistDetailScreen
 import com.soundwave.app.ui.screens.ProfileScreen
+import com.soundwave.app.ui.screens.FriendsScreen
 import com.soundwave.app.ui.screens.SearchScreen
 import com.soundwave.app.ui.theme.SoundWaveTheme
 import com.soundwave.app.ui.theme.SwSurfaceLight
@@ -334,6 +335,10 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val avatarPath by vm.avatarPath.collectAsState()
     val workoutPlaylist by vm.workoutPlaylist.collectAsState()
     val trendingTodayPlaylist by vm.trendingTodayPlaylist.collectAsState()
+    val friendRequests by vm.friendRequests.collectAsState()
+    val friendSearchResult by vm.friendSearchResult.collectAsState()
+    val friendSearchStatus by vm.friendSearchStatus.collectAsState()
+    val friendPlaylists by vm.friendPlaylists.collectAsState()
     val topTelugu by vm.topTelugu.collectAsState()
     val topHindi by vm.topHindi.collectAsState()
     val topEnglish by vm.topEnglish.collectAsState()
@@ -385,12 +390,14 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var showSoundSettings by remember { mutableStateOf(false) }
     var openChart by remember { mutableStateOf<Pair<String, List<Song>>?>(null) }
     var showProfile by remember { mutableStateOf(false) }
+    var showFriends by remember { mutableStateOf(false) }
 
     fun goToTab(t: Tab) {
         showSoundSettings = false
         showDiagnostics = false
         showAlbumSearch = false
         showProfile = false
+        showFriends = false
         openAlbum = null
         openPlaylist = null
         openChart = null
@@ -447,7 +454,21 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             showProfile = false
                         },
                         onAvatarPicked = { path -> vm.setAvatarPath(path) },
-                        onNameChanged = { name -> vm.updateDisplayName(name) }
+                        onNameChanged = { name -> vm.updateDisplayName(name) },
+                        onOpenFriends = { showFriends = true }
+                    )
+                    showFriends -> FriendsScreen(
+                        friendRequests = friendRequests,
+                        searchResult = friendSearchResult,
+                        searchStatus = friendSearchStatus,
+                        friendPlaylists = friendPlaylists,
+                        onBack = { showFriends = false },
+                        onSearch = { email -> vm.searchFriendByEmail(email) },
+                        onClearSearch = { vm.clearFriendSearch() },
+                        onSendRequest = { profile -> vm.sendFriendRequest(profile) },
+                        onRespond = { id, accept -> vm.respondToFriendRequest(id, accept) },
+                        onOpenFriendPlaylists = { friendId -> vm.loadFriendPlaylists(friendId) },
+                        onImportPlaylist = { playlist -> vm.importFriendPlaylist(playlist) }
                     )
                     showDiagnostics -> {
                         val context = androidx.compose.ui.platform.LocalContext.current

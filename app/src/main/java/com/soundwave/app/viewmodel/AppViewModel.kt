@@ -285,7 +285,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setUser(profile: UserProfile?) {
         _user.value = profile
         persistUser(profile)
-        if (profile != null) loadUserData(profile.id)
+        if (profile != null) {
+            loadUserData(profile.id)
+            // Registers a searchable profile row so friends can find this
+            // account by email — separate from the private auth.users table.
+            if (!profile.email.isNullOrBlank()) {
+                viewModelScope.launch {
+                    try {
+                        com.soundwave.app.data.SupabaseClient.upsertProfile(
+                            profile.id, profile.email, profile.name, profile.avatarUrl
+                        )
+                    } catch (e: Exception) {
+                        com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Profile upsert failed: ${e.message}")
+                    }
+                }
+            }
+            loadFriendRequests()
+        }
     }
 
     /**
@@ -327,6 +343,103 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun createPlaylist(name: String) {
         _playlists.value = _playlists.value + Playlist(id = System.currentTimeMillis().toString(), name = name)
+        syncToCloud()
+    }
+
+    // ── Friends ──────────────────────────────────────────────────────────────
+    private val _friendRequests = MutableStateFlow<List<com.soundwave.app.data.FriendRequestItem>>(emptyList())
+    val friendRequests: StateFlow<List<com.soundwave.app.data.FriendRequestItem>> = _friendRequests.asStateFlow()
+
+    private val _friendPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
+    val friendPlaylists: StateFlow<List<Playlist>> = _friendPlaylists.asStateFlow()
+
+    private val _friendSearchResult = MutableStateFlow<com.soundwave.app.data.FriendProfile?>(null)
+    val friendSearchResult: StateFlow<com.soundwave.app.data.FriendProfile?> = _friendSearchResult.asStateFlow()
+
+    private val _friendSearchStatus = MutableStateFlow<String?>(null) // null | "searching" | "not_found" | "self"
+    val friendSearchStatus: StateFlow<String?> = _friendSearchStatus.asStateFlow()
+
+    fun loadFriendRequests() {
+        val me = _user.value ?: return
+        viewModelScope.launch {
+            try {
+                _friendRequests.value = com.soundwave.app.data.SupabaseClient.getFriendRequests(me.id)
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Load requests failed: ${e.message}")
+            }
+        }
+    }
+
+    fun searchFriendByEmail(email: String) {
+        val me = _user.value
+        if (email.trim().equals(me?.email, ignoreCase = true)) {
+            _friendSearchResult.value = null
+            _friendSearchStatus.value = "self"
+            return
+        }
+        _friendSearchStatus.value = "searching"
+        _friendSearchResult.value = null
+        viewModelScope.launch {
+            try {
+                val result = com.soundwave.app.data.SupabaseClient.findUserByEmail(email)
+                _friendSearchResult.value = result
+                _friendSearchStatus.value = if (result == null) "not_found" else null
+            } catch (e: Exception) {
+                _friendSearchStatus.value = "not_found"
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Search failed: ${e.message}")
+            }
+        }
+    }
+
+    fun clearFriendSearch() {
+        _friendSearchResult.value = null
+        _friendSearchStatus.value = null
+    }
+
+    fun sendFriendRequest(receiver: com.soundwave.app.data.FriendProfile) {
+        val me = _user.value ?: return
+        viewModelScope.launch {
+            try {
+                com.soundwave.app.data.SupabaseClient.sendFriendRequest(me.id, receiver.id)
+                loadFriendRequests()
+                clearFriendSearch()
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Send request failed: ${e.message}")
+            }
+        }
+    }
+
+    fun respondToFriendRequest(requestId: String, accept: Boolean) {
+        viewModelScope.launch {
+            try {
+                com.soundwave.app.data.SupabaseClient.respondToFriendRequest(requestId, accept)
+                loadFriendRequests()
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Respond failed: ${e.message}")
+            }
+        }
+    }
+
+    fun loadFriendPlaylists(friendId: String) {
+        _friendPlaylists.value = emptyList()
+        viewModelScope.launch {
+            try {
+                val arr = com.soundwave.app.data.SupabaseClient.getFriendPlaylists(friendId)
+                _friendPlaylists.value = parsePlaylistsJson(arr)
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Friend playlists load failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Copy-based sharing: clones a friend's playlist into your own library. */
+    fun importFriendPlaylist(playlist: Playlist) {
+        val copy = Playlist(
+            id = System.currentTimeMillis().toString(),
+            name = playlist.name,
+            songs = playlist.songs.toMutableList()
+        )
+        _playlists.value = _playlists.value + copy
         syncToCloud()
     }
 
