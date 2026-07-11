@@ -455,14 +455,14 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         },
                         onAvatarPicked = { path -> vm.setAvatarPath(path) },
                         onNameChanged = { name -> vm.updateDisplayName(name) },
-                        onOpenFriends = { showFriends = true }
+                        onOpenFriends = { showProfile = false; showFriends = true }
                     )
                     showFriends -> FriendsScreen(
                         friendRequests = friendRequests,
                         searchResult = friendSearchResult,
                         searchStatus = friendSearchStatus,
                         friendPlaylists = friendPlaylists,
-                        onBack = { showFriends = false },
+                        onBack = { showFriends = false; showProfile = true },
                         onSearch = { email -> vm.searchFriendByEmail(email) },
                         onClearSearch = { vm.clearFriendSearch() },
                         onSendRequest = { profile -> vm.sendFriendRequest(profile) },
