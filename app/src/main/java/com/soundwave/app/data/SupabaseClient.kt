@@ -165,7 +165,7 @@ object SupabaseClient {
         })
     }
 
-    suspend fun sendFriendRequest(senderId: String, receiverId: String): Boolean = suspendCancellableCoroutine { cont ->
+    suspend fun sendFriendRequest(senderId: String, receiverId: String): Pair<Boolean, String?> = suspendCancellableCoroutine { cont ->
         val payload = JSONObject().put("sender_id", senderId).put("receiver_id", receiverId).put("status", "pending")
         val body = payload.toString().toRequestBody("application/json".toMediaType())
         val req = authHeader(
@@ -173,10 +173,15 @@ object SupabaseClient {
         ).build()
         client.newCall(req).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                if (cont.isActive) cont.resume(false)
+                if (cont.isActive) cont.resume(false to e.message)
             }
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                if (cont.isActive) cont.resume(response.isSuccessful)
+                if (response.isSuccessful) {
+                    if (cont.isActive) cont.resume(true to null)
+                } else {
+                    val detail = "HTTP ${response.code}: ${response.body?.string()?.take(200)}"
+                    if (cont.isActive) cont.resume(false to detail)
+                }
             }
         })
     }

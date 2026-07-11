@@ -405,13 +405,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val me = _user.value ?: return
         viewModelScope.launch {
             try {
-                val success = com.soundwave.app.data.SupabaseClient.sendFriendRequest(me.id, receiver.id)
+                val (success, detail) = com.soundwave.app.data.SupabaseClient.sendFriendRequest(me.id, receiver.id)
                 if (success) {
                     loadFriendRequests()
                     clearFriendSearch()
                 } else {
-                    _friendActionError.value = "Couldn't send request — check your Supabase RLS policies are set up (see setup step)."
-                    com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "sendFriendRequest returned failure for ${receiver.email}")
+                    _friendActionError.value = "Couldn't send request — ${detail ?: "unknown error"}"
+                    com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "sendFriendRequest failed for ${receiver.email}: $detail")
                 }
             } catch (e: Exception) {
                 _friendActionError.value = "Couldn't send request: ${e.message}"

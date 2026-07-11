@@ -60,21 +60,40 @@ class MainActivity : ComponentActivity() {
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(ApiException::class.java)
-            val idToken = account.idToken
-            if (idToken != null) {
-                lifecycleScope.launch {
-                    val userId = com.soundwave.app.data.SupabaseAuth.signInWithGoogleIdToken(idToken)
-                    val profile = GoogleAuth.toUserProfile(account)
-                    val savedName = try { com.soundwave.app.data.SupabaseAuth.fetchDisplayName() } catch (e: Exception) { null }
-                    val finalProfile = profile.copy(
-                        id = userId ?: profile.id,
-                        name = savedName ?: profile.name
-                    )
-                    vm.setUser(finalProfile)
-                }
-            }
+            completeSignIn(account.idToken, account)
         } catch (e: ApiException) {
             // Sign-in failed/cancelled — silently ignore, user stays on Login screen
+        }
+    }
+
+    private fun completeSignIn(idToken: String?, account: com.google.android.gms.auth.api.signin.GoogleSignInAccount) {
+        if (idToken == null) return
+        lifecycleScope.launch {
+            val userId = com.soundwave.app.data.SupabaseAuth.signInWithGoogleIdToken(idToken)
+            val profile = GoogleAuth.toUserProfile(account)
+            val savedName = try { com.soundwave.app.data.SupabaseAuth.fetchDisplayName() } catch (e: Exception) { null }
+            val finalProfile = profile.copy(
+                id = userId ?: profile.id,
+                name = savedName ?: profile.name
+            )
+            vm.setUser(finalProfile)
+        }
+    }
+
+    /**
+     * On a cold app start, the ViewModel restores your saved name/email
+     * straight from local prefs so the UI shows "logged in" instantly — but
+     * that alone never obtains a real Supabase session token, so every
+     * authenticated request (friend search/requests, cloud sync) would
+     * silently run as an anonymous guest until a fresh interactive sign-in
+     * happened. This re-exchanges the still-valid cached Google account for
+     * a real Supabase token automatically, with no UI prompt.
+     */
+    private fun attemptSilentReauth() {
+        val lastAccount = GoogleSignIn.getLastSignedInAccount(this) ?: return
+        GoogleAuth.client(this).silentSignIn().addOnCompleteListener { task ->
+            val account = try { task.getResult(ApiException::class.java) } catch (e: ApiException) { lastAccount }
+            completeSignIn(account.idToken, account)
         }
     }
 
@@ -83,6 +102,7 @@ class MainActivity : ComponentActivity() {
         installCrashLogger()
         showLastCrashIfAny()
         connectToPlaybackService()
+        attemptSilentReauth()
 
         vm.controllerBridge = object : AppViewModel.ControllerBridge {
             override fun play(song: Song) {
