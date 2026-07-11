@@ -382,8 +382,9 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val isSearching by vm.isSearching.collectAsState()
     val shuffle by vm.shuffle.collectAsState()
     val repeat by vm.repeat.collectAsState()
-    val progress by vm.progress.collectAsState()
-    val duration by vm.duration.collectAsState()
+    // NOTE: playback progress is intentionally NOT collected here — see the
+    // narrow scope inside the NowPlayingScreen block below.
+    // duration collected narrowly below too, alongside progress.
     val playbackError by vm.playbackError.collectAsState()
     val downloadedIds by vm.downloadedIds.collectAsState()
     val downloadingIds by vm.downloadingIds.collectAsState()
@@ -427,6 +428,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     }
 
     val likedIds = remember(likedSongs) { likedSongs.map { it.id }.toSet() }
+    val savedAlbumIds = remember(savedAlbums) { savedAlbums.map { it.id }.toSet() }
 
     LaunchedEffect(query) {
         delay(400)
@@ -460,7 +462,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         onAddToPlaylist = { addToPlaylistSong = it }
                     )
                     showAlbumSearch -> AlbumSearchScreen(
-                        savedAlbumIds = savedAlbums.map { it.id }.toSet(),
+                        savedAlbumIds = savedAlbumIds,
                         onBack = { showAlbumSearch = false },
                         onSaveAlbum = { vm.saveAlbum(it); showAlbumSearch = false },
                         onOpenAlbum = { openAlbum = it; showAlbumSearch = false }
@@ -564,7 +566,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             trendingTodayPlaylist = trendingTodayPlaylist
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
-                            savedAlbumIds = savedAlbums.map { it.id }.toSet(),
+                            savedAlbumIds = savedAlbumIds,
                             onBack = { tab = Tab.HOME },
                             onSaveAlbum = { vm.saveAlbum(it) },
                             onOpenAlbum = { openAlbum = it }
@@ -663,6 +665,14 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
             ) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150))
         ) {
             currentSong?.let { song ->
+                // Collected right here, not at the top of AppRoot — this value
+                // updates every 200ms while playing, and NowPlayingScreen is
+                // the only thing that needs it. Reading it at the top would
+                // force the ENTIRE screen tree (Home's scroll list, Search,
+                // etc.) to recompose 5x/second any time music is playing,
+                // which is what was causing the scroll lag.
+                val progress by vm.progress.collectAsState()
+                val duration by vm.duration.collectAsState()
                 NowPlayingScreen(
                     song = song, isPlaying = isPlaying, isLiked = likedIds.contains(song.id),
                     isDownloaded = downloadedIds.contains(song.id),
