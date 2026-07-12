@@ -413,6 +413,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var openChart by remember { mutableStateOf<Pair<String, List<Song>>?>(null) }
     var showProfile by remember { mutableStateOf(false) }
     var showFriends by remember { mutableStateOf(false) }
+    var libraryTab by remember { mutableIntStateOf(0) }
 
     fun goToTab(t: Tab) {
         showSoundSettings = false
@@ -453,7 +454,11 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         playlist = pl, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
                         onBack = { openPlaylist = null },
                         onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) },
-                        onRemoveSong = { vm.removeFromPlaylist(pl.id, it.id) }
+                        onRemoveSong = { vm.removeFromPlaylist(pl.id, it.id) },
+                        onTogglePrivacy = {
+                            vm.togglePlaylistPrivacy(pl.id)
+                            openPlaylist = pl.copy(isPrivate = !pl.isPrivate)
+                        }
                     )
                     al != null -> AlbumDetailScreen(
                         album = al, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
@@ -582,7 +587,9 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         Tab.LIBRARY -> LibraryScreen(
                             likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
                             downloadedSongs = vm.listDownloadedSongs(),
-                            currentSongId = currentSong?.id, isAudioPlaying = isPlaying, onPlay = { song, q -> vm.playSong(song, q) },
+                            currentSongId = currentSong?.id, isAudioPlaying = isPlaying,
+                            selectedTab = libraryTab, onTabChange = { libraryTab = it },
+                            onPlay = { song, q -> vm.playSong(song, q) },
                             onLike = { vm.toggleLike(it) }, onOpenPlaylist = { openPlaylist = it }, onOpenAlbum = { openAlbum = it },
                             onCreatePlaylist = { vm.createPlaylist(it) },
                             onDeletePlaylist = { vm.deletePlaylist(it.id) },

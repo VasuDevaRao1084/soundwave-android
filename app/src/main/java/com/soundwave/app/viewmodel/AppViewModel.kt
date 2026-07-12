@@ -346,6 +346,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         syncToCloud()
     }
 
+    fun togglePlaylistPrivacy(playlistId: String) {
+        _playlists.value = _playlists.value.map {
+            if (it.id == playlistId) it.copy(isPrivate = !it.isPrivate) else it
+        }
+        syncToCloud()
+    }
+
     // ── Friends ──────────────────────────────────────────────────────────────
     private val _friendRequests = MutableStateFlow<List<com.soundwave.app.data.FriendRequestItem>>(emptyList())
     val friendRequests: StateFlow<List<com.soundwave.app.data.FriendRequestItem>> = _friendRequests.asStateFlow()
@@ -436,7 +443,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val arr = com.soundwave.app.data.SupabaseClient.getFriendPlaylists(friendId)
-                _friendPlaylists.value = parsePlaylistsJson(arr)
+                // Private playlists are filtered out here, client-side, before
+                // ever reaching the Friends UI — a friend should never even
+                // see that a private playlist exists, not just be blocked
+                // from opening it.
+                _friendPlaylists.value = parsePlaylistsJson(arr).filter { !it.isPrivate }
             } catch (e: Exception) {
                 com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Friend playlists load failed: ${e.message}")
             }
@@ -994,14 +1005,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     private fun playlistsToJson(list: List<Playlist>) = JSONArray().apply {
         list.forEach { pl -> put(JSONObject().apply {
-            put("id", pl.id); put("name", pl.name); put("songs", songsToJson(pl.songs))
+            put("id", pl.id); put("name", pl.name); put("songs", songsToJson(pl.songs)); put("is_private", pl.isPrivate)
         }) }
     }
     private fun parsePlaylistsJson(arr: JSONArray?): List<Playlist> {
         if (arr == null) return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             arr.optJSONObject(i)?.let { o ->
-                Playlist(o.optString("id"), o.optString("name"), parseSongsJson(o.optJSONArray("songs")).toMutableList())
+                Playlist(
+                    o.optString("id"), o.optString("name"), parseSongsJson(o.optJSONArray("songs")).toMutableList(),
+                    isPrivate = o.optBoolean("is_private", false)
+                )
             }
         }
     }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.*
 import androidx.compose.runtime.getValue
@@ -27,6 +28,7 @@ import com.soundwave.app.data.SavedAlbum
 import com.soundwave.app.data.Song
 import com.soundwave.app.ui.components.SongRow
 import com.soundwave.app.ui.theme.SwBg
+import com.soundwave.app.ui.theme.SwPurple
 import com.soundwave.app.ui.theme.SwSurfaceLight
 
 @Composable
@@ -37,6 +39,8 @@ fun LibraryScreen(
     downloadedSongs: List<Song>,
     currentSongId: String?,
     isAudioPlaying: Boolean,
+    selectedTab: Int,
+    onTabChange: (Int) -> Unit,
     onPlay: (Song, List<Song>) -> Unit,
     onLike: (Song) -> Unit,
     onOpenPlaylist: (Playlist) -> Unit,
@@ -47,7 +51,7 @@ fun LibraryScreen(
     onSearchAlbums: () -> Unit,
     onAddToPlaylist: (Song) -> Unit
 ) {
-    var tab by remember { mutableIntStateOf(0) }
+    val tab = selectedTab
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().background(SwBg)) {
@@ -59,10 +63,10 @@ fun LibraryScreen(
             containerColor = SwBg,
             contentColor = Color.White
         ) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Liked") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Playlists") })
-            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Albums") })
-            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Downloads") })
+            Tab(selected = tab == 0, onClick = { onTabChange(0) }, text = { Text("Liked") })
+            Tab(selected = tab == 1, onClick = { onTabChange(1) }, text = { Text("Playlists") })
+            Tab(selected = tab == 2, onClick = { onTabChange(2) }, text = { Text("Albums") })
+            Tab(selected = tab == 3, onClick = { onTabChange(3) }, text = { Text("Downloads") })
         }
         when (tab) {
             0 -> if (likedSongs.isEmpty()) EmptyState("No liked songs yet") else LazyColumn {
@@ -118,19 +122,45 @@ fun LibraryScreen(
 @Composable
 private fun PlaylistRow(playlist: Playlist, onClick: () -> Unit, onDelete: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(48.dp).background(SwSurfaceLight, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.QueueMusic, contentDescription = null, tint = Color.White)
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(SwPurple.copy(alpha = 0.85f), Color(0xFF6C2FF2).copy(alpha = 0.85f))
+                    ),
+                    RoundedCornerShape(10.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.QueueMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+            if (playlist.isPrivate) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(3.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(3.dp)
+                ) {
+                    Icon(Icons.Filled.Lock, contentDescription = "Private", tint = Color.White, modifier = Modifier.size(10.dp))
+                }
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(playlist.name, color = Color.White, fontWeight = FontWeight.Medium)
-            Text("${playlist.songs.size} songs", color = Color.Gray, fontSize = 13.sp)
+            Text(playlist.name, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+            Text(
+                "${playlist.songs.size} songs" + if (playlist.isPrivate) " · Private" else "",
+                color = Color.Gray,
+                fontSize = 12.sp
+            )
         }
         IconButton(onClick = onDelete) {
-            Icon(Icons.Filled.Delete, contentDescription = "Delete playlist", tint = Color.Gray)
+            Icon(Icons.Filled.Delete, contentDescription = "Delete playlist", tint = Color.Gray, modifier = Modifier.size(20.dp))
         }
     }
 }

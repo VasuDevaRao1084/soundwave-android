@@ -81,11 +81,27 @@ fun ProfileScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(SwBg)
     ) {
+        // Gradient backdrop behind the header/avatar, fading into the flat
+        // background — the same visual pattern Spotify and Apple Music use
+        // on profile pages instead of a flat bar.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(320.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(SwPurple.copy(alpha = 0.35f), SwBg),
+                        endY = 900f
+                    )
+                )
+        )
+
+        Column(modifier = Modifier.fillMaxSize()) {
         // ── Header ────────────────────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -229,7 +245,7 @@ fun ProfileScreen(
             Spacer(Modifier.width(8.dp))
             Text("Sign out", color = Color(0xFFFF6B6B), fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
-    }
+        } // close inner Column
 
     if (showEditName) {
         var textValue by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(user?.name ?: "") }
@@ -255,4 +271,5 @@ fun ProfileScreen(
             }
         )
     }
+    } // close outer Box
 }

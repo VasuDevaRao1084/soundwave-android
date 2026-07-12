@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
@@ -262,23 +263,31 @@ fun FriendsScreen(
 @Composable
 private fun FriendRow(profile: FriendProfile, trailing: @Composable () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF15121F))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF1A1730)),
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(SwPurple.copy(alpha = 0.7f), Color(0xFF6C2FF2).copy(alpha = 0.7f)))),
             contentAlignment = Alignment.Center
         ) {
             if (profile.avatarUrl != null) {
                 AsyncImage(
                     model = profile.avatarUrl,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
                     contentScale = ContentScale.Crop,
                     filterQuality = FilterQuality.High
                 )
             } else {
-                Icon(Icons.Filled.Person, contentDescription = null, tint = SwTextTertiary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.width(12.dp))

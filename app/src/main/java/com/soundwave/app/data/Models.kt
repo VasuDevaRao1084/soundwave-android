@@ -3,7 +3,8 @@ package com.soundwave.app.data
 data class Playlist(
     val id: String,
     val name: String,
-    val songs: MutableList<Song> = mutableListOf()
+    val songs: MutableList<Song> = mutableListOf(),
+    val isPrivate: Boolean = false
 )
 
 data class SavedAlbum(
