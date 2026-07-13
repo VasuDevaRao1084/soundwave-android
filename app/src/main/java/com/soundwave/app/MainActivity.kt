@@ -72,9 +72,16 @@ class MainActivity : ComponentActivity() {
             val userId = com.soundwave.app.data.SupabaseAuth.signInWithGoogleIdToken(idToken)
             val profile = GoogleAuth.toUserProfile(account)
             val savedName = try { com.soundwave.app.data.SupabaseAuth.fetchDisplayName() } catch (e: Exception) { null }
+            // If a custom avatar was uploaded before, prefer it over Google's
+            // default photo — this is what makes the photo survive a
+            // reinstall (the local file can't, but this URL can).
+            val savedAvatarUrl = userId?.let {
+                try { com.soundwave.app.data.SupabaseClient.getProfileById(it)?.avatarUrl } catch (e: Exception) { null }
+            }
             val finalProfile = profile.copy(
                 id = userId ?: profile.id,
-                name = savedName ?: profile.name
+                name = savedName ?: profile.name,
+                avatarUrl = savedAvatarUrl ?: profile.avatarUrl
             )
             vm.setUser(finalProfile)
         }
@@ -431,6 +438,22 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val likedIds = remember(likedSongs) { likedSongs.map { it.id }.toSet() }
     val savedAlbumIds = remember(savedAlbums) { savedAlbums.map { it.id }.toSet() }
 
+    // Refreshes the friend-request badge whenever the app comes back to the
+    // foreground (not just when you happen to open the Friends screen) —
+    // the closest we can get to a real notification without setting up
+    // Firebase Cloud Messaging + a server-side trigger, which is a much
+    // bigger separate task.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                vm.loadFriendRequests()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(query) {
         delay(400)
         vm.search(query)
@@ -458,13 +481,15 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         onTogglePrivacy = {
                             vm.togglePlaylistPrivacy(pl.id)
                             openPlaylist = pl.copy(isPrivate = !pl.isPrivate)
-                        }
+                        },
+                        onDownloadAll = { vm.downloadAll(pl.songs) }
                     )
                     al != null -> AlbumDetailScreen(
                         album = al, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,
                         onBack = { openAlbum = null },
                         onPlay = { song, q -> vm.playSong(song, q) }, onLike = { vm.toggleLike(it) },
-                        onAddToPlaylist = { addToPlaylistSong = it }
+                        onAddToPlaylist = { addToPlaylistSong = it },
+                        onDownloadAll = { songs -> vm.downloadAll(songs) }
                     )
                     showAlbumSearch -> AlbumSearchScreen(
                         savedAlbumIds = savedAlbumIds,
@@ -475,6 +500,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     showProfile -> ProfileScreen(
                         user = user,
                         avatarPath = avatarPath,
+                        pendingIncomingRequests = friendRequests.count { it.status == "pending" && it.isIncoming },
                         onBack = { showProfile = false },
                         onSignOut = {
                             GoogleAuth.client(context).signOut()
@@ -568,7 +594,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             avatarPath = avatarPath,
                             onOpenProfile = { showProfile = true },
                             workoutPlaylist = workoutPlaylist,
-                            trendingTodayPlaylist = trendingTodayPlaylist
+                            trendingTodayPlaylist = trendingTodayPlaylist,
+                            hasIncomingFriendRequests = friendRequests.any { it.status == "pending" && it.isIncoming }
                         )
                         Tab.ALBUMS -> AlbumSearchScreen(
                             savedAlbumIds = savedAlbumIds,
@@ -587,6 +614,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         Tab.LIBRARY -> LibraryScreen(
                             likedSongs = likedSongs, playlists = playlists, savedAlbums = savedAlbums,
                             downloadedSongs = vm.listDownloadedSongs(),
+                            totalDownloadedBytes = vm.totalDownloadedBytes(),
                             currentSongId = currentSong?.id, isAudioPlaying = isPlaying,
                             selectedTab = libraryTab, onTabChange = { libraryTab = it },
                             onPlay = { song, q -> vm.playSong(song, q) },
@@ -684,6 +712,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                     song = song, isPlaying = isPlaying, isLiked = likedIds.contains(song.id),
                     isDownloaded = downloadedIds.contains(song.id),
                     isDownloading = downloadingIds.contains(song.id),
+                    downloadProgress = vm.downloadProgress.collectAsState().value[song.id] ?: 0f,
                     progress = progress, duration = duration, shuffle = shuffle, repeat = repeat,
                     sleepTimerMins = sleepTimerMins,
                     onClose = { showNowPlaying = false }, onTogglePlay = { vm.togglePlayPause() },

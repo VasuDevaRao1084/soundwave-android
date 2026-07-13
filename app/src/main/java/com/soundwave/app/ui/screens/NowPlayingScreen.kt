@@ -47,6 +47,7 @@ fun NowPlayingScreen(
     isLiked: Boolean,
     isDownloaded: Boolean,
     isDownloading: Boolean,
+    downloadProgress: Float = 0f,
     progress: Float,
     duration: Float,
     shuffle: Boolean,
@@ -237,7 +238,16 @@ fun NowPlayingScreen(
                 )
                 if (isDownloading) {
                     Box(modifier = androidx.compose.ui.Modifier.size(48.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                        CircularProgressIndicator(modifier = androidx.compose.ui.Modifier.size(20.dp), color = primaryColor, strokeWidth = 2.dp)
+                        if (downloadProgress > 0f) {
+                            CircularProgressIndicator(
+                                progress = downloadProgress,
+                                modifier = androidx.compose.ui.Modifier.size(20.dp),
+                                color = primaryColor,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            CircularProgressIndicator(modifier = androidx.compose.ui.Modifier.size(20.dp), color = primaryColor, strokeWidth = 2.dp)
+                        }
                     }
                 } else {
                     ActionIcon(

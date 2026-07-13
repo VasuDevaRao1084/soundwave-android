@@ -61,6 +61,7 @@ fun saveNewAvatarFile(context: android.content.Context, uri: Uri): String {
 fun ProfileScreen(
     user: UserProfile?,
     avatarPath: String?,
+    pendingIncomingRequests: Int = 0,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
     onAvatarPicked: (String) -> Unit,
@@ -225,6 +226,17 @@ fun ProfileScreen(
             Icon(Icons.Filled.Person, contentDescription = null, tint = SwPurple, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
             Text("Friends", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            if (pendingIncomingRequests > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFFF4B4B))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                ) {
+                    Text("$pendingIncomingRequests", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(8.dp))
+            }
             Text("→", color = SwTextSecondary, fontSize = 15.sp)
         }
 

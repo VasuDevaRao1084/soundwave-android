@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
@@ -35,7 +36,8 @@ fun PlaylistDetailScreen(
     onPlay: (Song, List<Song>) -> Unit,
     onLike: (Song) -> Unit,
     onRemoveSong: (Song) -> Unit,
-    onTogglePrivacy: () -> Unit = {}
+    onTogglePrivacy: () -> Unit = {},
+    onDownloadAll: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SwBg)) {
         Spacer(Modifier.height(48.dp))
@@ -68,6 +70,10 @@ fun PlaylistDetailScreen(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
+            }
+            Spacer(Modifier.width(6.dp))
+            IconButton(onClick = onDownloadAll) {
+                Icon(Icons.Filled.Download, contentDescription = "Download all", tint = Color.White)
             }
             Spacer(Modifier.width(8.dp))
         }

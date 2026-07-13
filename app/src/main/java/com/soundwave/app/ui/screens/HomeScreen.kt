@@ -53,32 +53,46 @@ import com.soundwave.app.ui.theme.SwTextTertiary
 import com.soundwave.app.ui.theme.extractAlbumTheme
 
 @Composable
-private fun ProfileAvatarButton(user: UserProfile?, avatarPath: String?, onClick: () -> Unit) {
+private fun ProfileAvatarButton(user: UserProfile?, avatarPath: String?, hasNotification: Boolean = false, onClick: () -> Unit) {
     val localFile = remember(avatarPath) { avatarPath?.let { java.io.File(it) } }
     Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(Brush.linearGradient(listOf(SwPurple, Color(0xFF6C2FF2))))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+        modifier = Modifier.size(40.dp)
     ) {
-        when {
-            localFile != null && localFile.exists() -> AsyncImage(
-                model = localFile,
-                contentDescription = "Profile",
-                modifier = Modifier.fillMaxSize().clip(CircleShape),
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.High
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(SwPurple, Color(0xFF6C2FF2))))
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                localFile != null && localFile.exists() -> AsyncImage(
+                    model = localFile,
+                    contentDescription = "Profile",
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High
+                )
+                user?.avatarUrl != null -> AsyncImage(
+                    model = user.avatarUrl,
+                    contentDescription = "Profile",
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High
+                )
+                else -> Icon(Icons.Filled.Person, contentDescription = "Profile", tint = Color.White, modifier = Modifier.size(22.dp))
+            }
+        }
+        if (hasNotification) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(13.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF4B4B))
+                    .border(2.dp, SwBg, CircleShape)
             )
-            user?.avatarUrl != null -> AsyncImage(
-                model = user.avatarUrl,
-                contentDescription = "Profile",
-                modifier = Modifier.fillMaxSize().clip(CircleShape),
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.High
-            )
-            else -> Icon(Icons.Filled.Person, contentDescription = "Profile", tint = Color.White, modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -108,12 +122,28 @@ fun HomeScreen(
     avatarPath: String? = null,
     onOpenProfile: () -> Unit = {},
     workoutPlaylist: List<Song> = emptyList(),
-    trendingTodayPlaylist: List<Song> = emptyList()
+    trendingTodayPlaylist: List<Song> = emptyList(),
+    hasIncomingFriendRequests: Boolean = false
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SwBg),
         contentPadding = PaddingValues(bottom = 120.dp)
     ) {
+        // ── Featured banner: full-bleed, edge-to-edge — deliberately different
+        // shape/treatment from every other card on this screen (which all sit
+        // inside side padding). Pulls the #1 song from whichever chart has
+        // loaded first, so there's always something here even for a brand
+        // new account with no listening history yet.
+        val featuredSong = topTelugu.firstOrNull() ?: topHindi.firstOrNull() ?: topEnglish.firstOrNull()
+        if (featuredSong != null) {
+            item {
+                FeaturedBanner(
+                    song = featuredSong,
+                    onClick = { onPlay(featuredSong) }
+                )
+            }
+        }
+
         // ── Header ─────────────────────────────────────────────────────────────
         item {
             Spacer(Modifier.height(52.dp))
@@ -128,7 +158,7 @@ fun HomeScreen(
                     fontWeight = FontWeight.ExtraBold,
                     modifier = Modifier.weight(1f)
                 )
-                ProfileAvatarButton(user = user, avatarPath = avatarPath, onClick = onOpenProfile)
+                ProfileAvatarButton(user = user, avatarPath = avatarPath, hasNotification = hasIncomingFriendRequests, onClick = onOpenProfile)
             }
             Spacer(Modifier.height(4.dp))
             Row(
@@ -388,6 +418,73 @@ fun HomeScreen(
                         AlbumCard(album = album, onClick = { onOpenAlbum(album) })
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeaturedBanner(song: Song, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .clickable(onClick = onClick)
+    ) {
+        if (song.thumbnail != null) {
+            AsyncImage(
+                model = song.thumbnail,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.High
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1730)))
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f), SwBg),
+                        startY = 60f
+                    )
+                )
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = 20.dp, vertical = 20.dp)
+        ) {
+            Text(
+                "FEATURED",
+                color = SwPurple,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.5.sp
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                song.title,
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(song.artist, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(SwPurple)
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Play Now", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

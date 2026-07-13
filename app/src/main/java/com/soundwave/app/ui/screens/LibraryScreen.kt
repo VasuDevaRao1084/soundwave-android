@@ -38,6 +38,7 @@ fun LibraryScreen(
     playlists: List<Playlist>,
     savedAlbums: List<SavedAlbum>,
     downloadedSongs: List<Song>,
+    totalDownloadedBytes: Long = 0L,
     currentSongId: String?,
     isAudioPlaying: Boolean,
     selectedTab: Int,
@@ -91,6 +92,14 @@ fun LibraryScreen(
                 }
             }
             3 -> if (downloadedSongs.isEmpty()) EmptyState("No downloaded songs yet") else LazyColumn {
+                item {
+                    Text(
+                        "${downloadedSongs.size} songs · ${formatBytes(totalDownloadedBytes)} used",
+                        color = Color.Gray,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
                 items(downloadedSongs) { song ->
                     SongRow(song = song, isPlaying = song.id == currentSongId, isCurrentlyPlaying = song.id == currentSongId && isAudioPlaying, isLiked = false, onClick = { onPlay(song, downloadedSongs) }, onMoreClick = { onAddToPlaylist(song) })
                 }
@@ -193,4 +202,10 @@ private fun EmptyState(text: String) {
     Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Color.Gray)
     }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
 }

@@ -318,4 +318,31 @@ object SupabaseClient {
             }
         })
     }
+
+    /** Uploads avatar bytes to Storage under userId/avatar.jpg, returns the public URL. */
+    suspend fun uploadAvatar(userId: String, bytes: ByteArray): String? = suspendCancellableCoroutine { cont ->
+        val body = bytes.toRequestBody("image/jpeg".toMediaType())
+        val req = Request.Builder()
+            .url("$SUPABASE_URL/storage/v1/object/avatars/$userId/avatar.jpg")
+            .addHeader("apikey", ANON_KEY)
+            .addHeader("Authorization", "Bearer ${accessToken ?: ANON_KEY}")
+            .addHeader("x-upsert", "true")
+            .put(body)
+            .build()
+        client.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resume(null)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                if (response.isSuccessful) {
+                    // Cache-bust with a timestamp so the client doesn't serve a
+                    // stale cached image for this same path after a re-upload.
+                    val url = "$SUPABASE_URL/storage/v1/object/public/avatars/$userId/avatar.jpg?t=${System.currentTimeMillis()}"
+                    if (cont.isActive) cont.resume(url)
+                } else {
+                    if (cont.isActive) cont.resume(null)
+                }
+            }
+        })
+    }
 }

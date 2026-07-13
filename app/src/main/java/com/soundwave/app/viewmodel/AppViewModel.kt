@@ -63,6 +63,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setAvatarPath(path: String) {
         _avatarPath.value = path
         prefs.edit().putString("avatar_path", path).apply()
+
+        // Local file gives instant UI feedback (already handled above). Also
+        // push the bytes to Supabase Storage and save the resulting public
+        // URL against the account — that URL is what survives an uninstall,
+        // since the local file itself never can (Android wipes app-private
+        // storage on uninstall, no way around that).
+        val me = _user.value ?: return
+        viewModelScope.launch {
+            try {
+                val bytes = java.io.File(path).readBytes()
+                val url = com.soundwave.app.data.SupabaseClient.uploadAvatar(me.id, bytes)
+                if (url != null) {
+                    _user.value = _user.value?.copy(avatarUrl = url)
+                    persistUser(_user.value)
+                    com.soundwave.app.data.SupabaseClient.upsertProfile(me.id, me.email ?: "", me.name, url)
+                }
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "PROFILE", "Avatar cloud upload failed: ${e.message}")
+            }
+        }
     }
 
     // ── Library ───────────────────────────────────────────────────────
@@ -265,6 +285,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val downloadedPaths: StateFlow<Map<String, String>> = _downloadedPaths.asStateFlow()
     private val _downloadingIds = MutableStateFlow<Set<String>>(emptySet())
     val downloadingIds: StateFlow<Set<String>> = _downloadingIds.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
     private val _playbackError = MutableStateFlow<String?>(null)
     val playbackError: StateFlow<String?> = _playbackError.asStateFlow()
     fun clearPlaybackError() { _playbackError.value = null }
@@ -869,7 +892,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     connection.inputStream.use { input ->
                         targetFile.outputStream().use { output ->
-                            input.copyTo(output, bufferSize = 8 * 1024)
+                            val totalBytes = connection.contentLength // -1 if server doesn't send it
+                            val buffer = ByteArray(8 * 1024)
+                            var bytesRead: Long = 0
+                            while (true) {
+                                val n = input.read(buffer)
+                                if (n == -1) break
+                                output.write(buffer, 0, n)
+                                bytesRead += n
+                                if (totalBytes > 0) {
+                                    _downloadProgress.value = _downloadProgress.value + (song.id to (bytesRead.toFloat() / totalBytes))
+                                }
+                            }
                         }
                     }
                 } finally {
@@ -903,6 +937,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _playbackError.value = "Download failed for \"${song.title}\""
         } finally {
             _downloadingIds.value = _downloadingIds.value - song.id
+            _downloadProgress.value = _downloadProgress.value - song.id
         }
     }
 
@@ -920,6 +955,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) { null }
         }
     }
+
+    /** Downloads every not-yet-downloaded song in the list — used by the
+     *  "Download all" button on a playlist/album. Skips ones already saved
+     *  or already in progress, so it's safe to tap repeatedly. */
+    fun downloadAll(songs: List<Song>) {
+        songs.forEach { song ->
+            if (!_downloadedIds.value.contains(song.id) && !_downloadingIds.value.contains(song.id)) {
+                viewModelScope.launch { downloadSong(song) }
+            }
+        }
+    }
+
+    /** Total on-disk size of every downloaded audio file, for the storage-used summary. */
+    fun totalDownloadedBytes(): Long =
+        _downloadedPaths.value.values.sumOf { path ->
+            try { java.io.File(path).length() } catch (e: Exception) { 0L }
+        }
 
     // ── Cloud sync ────────────────────────────────────────────────────
     private val libraryPrefs = appContext.getSharedPreferences("soundwave_library", Application.MODE_PRIVATE)

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,7 +35,8 @@ fun AlbumDetailScreen(
     onBack: () -> Unit,
     onPlay: (Song, List<Song>) -> Unit,
     onLike: (Song) -> Unit,
-    onAddToPlaylist: (Song) -> Unit
+    onAddToPlaylist: (Song) -> Unit,
+    onDownloadAll: (List<Song>) -> Unit = {}
 ) {
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -54,6 +56,10 @@ fun AlbumDetailScreen(
             Column {
                 Text(album.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Text(album.artist, color = Color.Gray, fontSize = 14.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { onDownloadAll(songs) }) {
+                Icon(Icons.Filled.Download, contentDescription = "Download all", tint = Color.White)
             }
         }
         Spacer(Modifier.height(16.dp))
