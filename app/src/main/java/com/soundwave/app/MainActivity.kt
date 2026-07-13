@@ -443,7 +443,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     // the closest we can get to a real notification without setting up
     // Firebase Cloud Messaging + a server-side trigger, which is a much
     // bigger separate task.
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
