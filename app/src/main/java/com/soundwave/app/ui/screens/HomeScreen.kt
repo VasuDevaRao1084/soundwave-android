@@ -129,21 +129,6 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize().background(SwBg),
         contentPadding = PaddingValues(bottom = 120.dp)
     ) {
-        // ── Featured banner: full-bleed, edge-to-edge — deliberately different
-        // shape/treatment from every other card on this screen (which all sit
-        // inside side padding). Pulls the #1 song from whichever chart has
-        // loaded first, so there's always something here even for a brand
-        // new account with no listening history yet.
-        val featuredSong = topTelugu.firstOrNull() ?: topHindi.firstOrNull() ?: topEnglish.firstOrNull()
-        if (featuredSong != null) {
-            item {
-                FeaturedBanner(
-                    song = featuredSong,
-                    onClick = { onPlay(featuredSong) }
-                )
-            }
-        }
-
         // ── Header ─────────────────────────────────────────────────────────────
         item {
             Spacer(Modifier.height(52.dp))
@@ -191,6 +176,16 @@ fun HomeScreen(
                     onClick = { onPlay(recentlyPlayed.first()) }
                 )
                 Spacer(Modifier.height(24.dp))
+            }
+        } else {
+            // Brand new account, no listening history yet — show a featured
+            // pick instead of an empty gap where "Jump back in" would be.
+            val featuredSong = topTelugu.firstOrNull() ?: topHindi.firstOrNull() ?: topEnglish.firstOrNull()
+            if (featuredSong != null) {
+                item {
+                    FeaturedBanner(song = featuredSong, onClick = { onPlay(featuredSong) })
+                    Spacer(Modifier.height(24.dp))
+                }
             }
         }
 
@@ -428,7 +423,9 @@ private fun FeaturedBanner(song: Song, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(220.dp)
+            .padding(horizontal = 20.dp)
+            .height(180.dp)
+            .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
     ) {
         if (song.thumbnail != null) {
@@ -442,20 +439,28 @@ private fun FeaturedBanner(song: Song, onClick: () -> Unit) {
         } else {
             Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1730)))
         }
+        // Strong, near-opaque scrim across the whole card — source album art
+        // often already has its own baked-in text (movie/artist credits), so
+        // a light gradient isn't enough to keep our own title readable and
+        // free of visual clash. This fully buries the source image's text
+        // while still letting the artwork's color/mood show through.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f), SwBg),
-                        startY = 60f
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.55f),
+                            Color.Black.copy(alpha = 0.35f),
+                            Color.Black.copy(alpha = 0.92f)
+                        )
                     )
                 )
         )
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(horizontal = 20.dp, vertical = 20.dp)
+                .padding(horizontal = 18.dp, vertical = 16.dp)
         ) {
             Text(
                 "FEATURED",
@@ -468,23 +473,23 @@ private fun FeaturedBanner(song: Song, onClick: () -> Unit) {
             Text(
                 song.title,
                 color = Color.White,
-                fontSize = 24.sp,
+                fontSize = 21.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(song.artist, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(12.dp))
+            Text(song.artist, color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(10.dp))
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(18.dp))
                     .background(SwPurple)
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Play Now", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Play Now", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
