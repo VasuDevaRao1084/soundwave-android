@@ -303,6 +303,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         fun resume()
         fun skipToNext()
         fun skipToPrevious()
+        fun moveQueueItem(from: Int, to: Int, currentLogicalIndex: Int)
     }
 
     fun setUser(profile: UserProfile?) {
@@ -702,6 +703,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _queueIndex.value = _queue.value.indexOfFirst { it.id == song.id }.coerceAtLeast(_queueIndex.value)
         addToRecentlyPlayed(song)
         updateSmartRecommendations(song)
+    }
+
+    /** Drag-to-reorder in the Queue sheet. Reorders the app-level logical
+     * queue (the source of truth Next/Previous progression is built from)
+     * and keeps `_queueIndex` pointing at the currently playing song even
+     * though its position may have shifted. Also best-effort reorders the
+     * ExoPlayer-loaded window itself (see ControllerBridge impl) so the
+     * change is audible immediately rather than waiting for the next window
+     * rebuild — but even if that mapping can't apply (song was outside the
+     * currently loaded window), the reorder still takes effect the next
+     * time the window resolves, so this is safe either way. */
+    fun moveQueueItem(from: Int, to: Int) {
+        val q = _queue.value.toMutableList()
+        if (from !in q.indices || to !in q.indices || from == to) return
+        val oldCurIdx = _queueIndex.value
+        val moved = q.removeAt(from)
+        q.add(to, moved)
+        _queue.value = q
+        _queueIndex.value = when {
+            from == oldCurIdx -> to
+            from < oldCurIdx && to >= oldCurIdx -> oldCurIdx - 1
+            from > oldCurIdx && to <= oldCurIdx -> oldCurIdx + 1
+            else -> oldCurIdx
+        }
+        controllerBridge?.moveQueueItem(from, to, oldCurIdx)
     }
 
     fun toggleShuffle() { _shuffle.value = !_shuffle.value }

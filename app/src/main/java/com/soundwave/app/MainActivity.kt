@@ -191,6 +191,25 @@ class MainActivity : ComponentActivity() {
             override fun resume() { mediaController?.play() }
             override fun seekTo(seconds: Float) { mediaController?.seekTo((seconds * 1000).toLong()) }
             override fun skipToNext() { mediaController?.takeIf { it.hasNextMediaItem() }?.seekToNext() }
+            override fun moveQueueItem(from: Int, to: Int, currentLogicalIndex: Int) {
+                val c = mediaController ?: return
+                // The player only ever holds a resolved WINDOW of the full logical
+                // queue (see AppViewModel's window resolution), so `from`/`to` —
+                // indices into the full queue — need to be shifted by the offset
+                // between the player's own current index and the logical index of
+                // the song currently playing. Bounds-checked: if the moved song
+                // wasn't inside the currently loaded window, this is a safe no-op
+                // and the new order still applies next time the window rebuilds.
+                val offset = c.currentMediaItemIndex - currentLogicalIndex
+                val playerFrom = from + offset
+                val playerTo = to + offset
+                if (playerFrom in 0 until c.mediaItemCount &&
+                    playerTo in 0 until c.mediaItemCount &&
+                    playerFrom != playerTo
+                ) {
+                    c.moveMediaItem(playerFrom, playerTo)
+                }
+            }
             override fun skipToPrevious() {
                 val c = mediaController ?: return
                 // If more than 3 seconds into the song, restart it (standard
@@ -744,7 +763,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                 currentSongId = currentSong?.id,
                 queueIndex = queueIndex,
                 onDismiss = { showQueue = false },
-                onPlaySong = { vm.playSong(it, queue) }
+                onPlaySong = { vm.playSong(it, queue) },
+                onReorder = { from, to -> vm.moveQueueItem(from, to) }
             )
         }
 
