@@ -44,6 +44,7 @@ import com.soundwave.app.ui.screens.NowPlayingScreen
 import com.soundwave.app.ui.screens.PlaylistDetailScreen
 import com.soundwave.app.ui.screens.ProfileScreen
 import com.soundwave.app.ui.screens.FriendsScreen
+import com.soundwave.app.ui.screens.FriendActivityScreen
 import com.soundwave.app.ui.screens.SearchScreen
 import com.soundwave.app.ui.theme.SoundWaveTheme
 import com.soundwave.app.ui.theme.SwSurfaceLight
