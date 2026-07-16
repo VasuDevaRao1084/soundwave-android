@@ -415,6 +415,7 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val downloadedIds by vm.downloadedIds.collectAsState()
     val downloadingIds by vm.downloadingIds.collectAsState()
     val searchHistory by vm.searchHistory.collectAsState()
+    val friendPlaylistUpdateCounts by vm.friendPlaylistUpdateCounts.collectAsState()
     val sleepTimerMins by vm.sleepTimerMins.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -501,7 +502,10 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                             vm.togglePlaylistPrivacy(pl.id)
                             openPlaylist = pl.copy(isPrivate = !pl.isPrivate)
                         },
-                        onDownloadAll = { vm.downloadAll(pl.songs) }
+                        onDownloadAll = { vm.downloadAll(pl.songs) },
+                        friendNewSongsCount = friendPlaylistUpdateCounts[pl.id] ?: 0,
+                        onCheckFriendUpdates = { vm.checkFriendPlaylistUpdates(pl) },
+                        onMergeFriendUpdates = { vm.mergeFriendPlaylistUpdates(pl) }
                     )
                     al != null -> AlbumDetailScreen(
                         album = al, currentSongId = currentSong?.id, isAudioPlaying = isPlaying, likedIds = likedIds,

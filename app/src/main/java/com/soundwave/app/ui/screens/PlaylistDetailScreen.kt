@@ -11,8 +11,10 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,8 +39,14 @@ fun PlaylistDetailScreen(
     onLike: (Song) -> Unit,
     onRemoveSong: (Song) -> Unit,
     onTogglePrivacy: () -> Unit = {},
-    onDownloadAll: () -> Unit = {}
+    onDownloadAll: () -> Unit = {},
+    friendNewSongsCount: Int = 0,
+    onCheckFriendUpdates: () -> Unit = {},
+    onMergeFriendUpdates: () -> Unit = {}
 ) {
+    LaunchedEffect(playlist.id) {
+        if (playlist.sourceFriendId != null) onCheckFriendUpdates()
+    }
     Column(modifier = Modifier.fillMaxSize().background(SwBg)) {
         Spacer(Modifier.height(48.dp))
         Row(modifier = Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -78,6 +86,29 @@ fun PlaylistDetailScreen(
             Spacer(Modifier.width(8.dp))
         }
         Spacer(Modifier.height(16.dp))
+        if (friendNewSongsCount > 0) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF1F1A35))
+                    .clickable(onClick = onMergeFriendUpdates)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Sync, contentDescription = null, tint = SwPurple, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (friendNewSongsCount == 1) "1 new song since you imported this" else "$friendNewSongsCount new songs since you imported this",
+                        color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    Text("Tap to add them", color = SwPurple, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
         if (playlist.songs.isEmpty()) {
             Box(Modifier.fillMaxWidth().padding(40.dp)) {
                 Text("No songs in this playlist yet", color = Color.Gray, modifier = Modifier.align(Alignment.Center))

@@ -4,7 +4,15 @@ data class Playlist(
     val id: String,
     val name: String,
     val songs: MutableList<Song> = mutableListOf(),
-    val isPrivate: Boolean = false
+    val isPrivate: Boolean = false,
+    // Set only on playlists imported from a friend. Lets us later ask "does
+    // the friend's original have songs I don't have yet?" without turning
+    // this into a fully live-synced playlist (deliberately a snapshot copy,
+    // per the roadmap) — `importedSongIds` is the snapshot at import time,
+    // diffed against the friend's current playlist on demand.
+    val sourceFriendId: String? = null,
+    val sourcePlaylistId: String? = null,
+    val importedSongIds: List<String> = emptyList()
 )
 
 data class SavedAlbum(

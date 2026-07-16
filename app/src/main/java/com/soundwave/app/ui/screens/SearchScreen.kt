@@ -1,5 +1,11 @@
 package com.soundwave.app.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -12,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
@@ -21,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +62,16 @@ fun SearchScreen(
     onAddToPlaylist: (Song) -> Unit,
     onClearHistory: () -> Unit
 ) {
+    val context = LocalContext.current
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            matches?.firstOrNull()?.let { onQueryChange(it) }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().background(SwBg)
     ) {
@@ -74,9 +92,24 @@ fun SearchScreen(
             placeholder = { Text("Songs, artists, albums...", color = SwTextTertiary) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = SwPurple) },
             trailingIcon = {
-                if (query.isNotBlank()) {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = SwTextSecondary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (query.isNotBlank()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear", tint = SwTextSecondary)
+                        }
+                    }
+                    IconButton(onClick = {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Search songs, artists, albums...")
+                        }
+                        if (intent.resolveActivity(context.packageManager) != null) {
+                            voiceLauncher.launch(intent)
+                        } else {
+                            Toast.makeText(context, "Voice search isn't available on this device", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(Icons.Filled.Mic, contentDescription = "Voice search", tint = SwPurple)
                     }
                 }
             },

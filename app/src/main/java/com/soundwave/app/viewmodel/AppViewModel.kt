@@ -383,6 +383,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _friendPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
     val friendPlaylists: StateFlow<List<Playlist>> = _friendPlaylists.asStateFlow()
+    private var currentFriendPlaylistsOwnerId: String? = null
+
+    // Live-synced friend playlists (roadmap item 4): a lightweight upgrade
+    // over plain one-time import. Deliberately NOT a fully live/shared
+    // playlist (that would need its own RLS design) — instead each linked
+    // playlist remembers which friend/playlist it came from and which song
+    // IDs it had at import time, so we can later ask "how many songs has
+    // the friend added since?" and offer a one-tap merge.
+    private val _friendPlaylistUpdateCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val friendPlaylistUpdateCounts: StateFlow<Map<String, Int>> = _friendPlaylistUpdateCounts.asStateFlow()
 
     private val _friendSearchResult = MutableStateFlow<com.soundwave.app.data.FriendProfile?>(null)
     val friendSearchResult: StateFlow<com.soundwave.app.data.FriendProfile?> = _friendSearchResult.asStateFlow()
@@ -464,6 +474,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadFriendPlaylists(friendId: String) {
         _friendPlaylists.value = emptyList()
+        currentFriendPlaylistsOwnerId = friendId
         viewModelScope.launch {
             try {
                 val arr = com.soundwave.app.data.SupabaseClient.getFriendPlaylists(friendId)
@@ -478,15 +489,70 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Copy-based sharing: clones a friend's playlist into your own library. */
+    /** Copy-based sharing: clones a friend's playlist into your own library,
+     * tagged with where it came from so we can later check for updates. */
     fun importFriendPlaylist(playlist: Playlist) {
         val copy = Playlist(
             id = System.currentTimeMillis().toString(),
             name = playlist.name,
-            songs = playlist.songs.toMutableList()
+            songs = playlist.songs.toMutableList(),
+            sourceFriendId = currentFriendPlaylistsOwnerId,
+            sourcePlaylistId = playlist.id,
+            importedSongIds = playlist.songs.map { it.id }
         )
         _playlists.value = _playlists.value + copy
         syncToCloud()
+    }
+
+    /** Checks whether the friend has added songs to the original playlist
+     * since it was imported. Safe to call repeatedly (e.g. every time the
+     * playlist detail screen opens) — it's a read-only diff, nothing is
+     * changed until the person explicitly taps to merge. */
+    fun checkFriendPlaylistUpdates(playlist: Playlist) {
+        val friendId = playlist.sourceFriendId ?: return
+        val sourceId = playlist.sourcePlaylistId ?: return
+        viewModelScope.launch {
+            try {
+                val arr = com.soundwave.app.data.SupabaseClient.getFriendPlaylists(friendId)
+                val friendPlaylist = parsePlaylistsJson(arr).firstOrNull { it.id == sourceId } ?: return@launch
+                val newCount = friendPlaylist.songs.count { it.id !in playlist.importedSongIds }
+                _friendPlaylistUpdateCounts.value = _friendPlaylistUpdateCounts.value + (playlist.id to newCount)
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Playlist update check failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Pulls in whatever new songs the friend has added since import, and
+     * advances the import snapshot so the same songs aren't offered again. */
+    fun mergeFriendPlaylistUpdates(playlist: Playlist) {
+        val friendId = playlist.sourceFriendId ?: return
+        val sourceId = playlist.sourcePlaylistId ?: return
+        viewModelScope.launch {
+            try {
+                val arr = com.soundwave.app.data.SupabaseClient.getFriendPlaylists(friendId)
+                val friendPlaylist = parsePlaylistsJson(arr).firstOrNull { it.id == sourceId } ?: return@launch
+                val newSongs = friendPlaylist.songs.filter { it.id !in playlist.importedSongIds }
+                if (newSongs.isEmpty()) return@launch
+                _playlists.value = _playlists.value.map {
+                    if (it.id == playlist.id) {
+                        Playlist(
+                            id = it.id,
+                            name = it.name,
+                            songs = (it.songs + newSongs).toMutableList(),
+                            isPrivate = it.isPrivate,
+                            sourceFriendId = it.sourceFriendId,
+                            sourcePlaylistId = it.sourcePlaylistId,
+                            importedSongIds = it.importedSongIds + newSongs.map { s -> s.id }
+                        )
+                    } else it
+                }
+                _friendPlaylistUpdateCounts.value = _friendPlaylistUpdateCounts.value + (playlist.id to 0)
+                syncToCloud()
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Playlist merge failed: ${e.message}")
+            }
+        }
     }
 
     fun addToPlaylist(playlistId: String, song: Song) {
@@ -1084,6 +1150,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun playlistsToJson(list: List<Playlist>) = JSONArray().apply {
         list.forEach { pl -> put(JSONObject().apply {
             put("id", pl.id); put("name", pl.name); put("songs", songsToJson(pl.songs)); put("is_private", pl.isPrivate)
+            pl.sourceFriendId?.let { put("source_friend_id", it) }
+            pl.sourcePlaylistId?.let { put("source_playlist_id", it) }
+            if (pl.importedSongIds.isNotEmpty()) put("imported_song_ids", JSONArray(pl.importedSongIds))
         }) }
     }
     private fun parsePlaylistsJson(arr: JSONArray?): List<Playlist> {
@@ -1092,7 +1161,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             arr.optJSONObject(i)?.let { o ->
                 Playlist(
                     o.optString("id"), o.optString("name"), parseSongsJson(o.optJSONArray("songs")).toMutableList(),
-                    isPrivate = o.optBoolean("is_private", false)
+                    isPrivate = o.optBoolean("is_private", false),
+                    sourceFriendId = o.optString("source_friend_id", "").takeIf { it.isNotBlank() },
+                    sourcePlaylistId = o.optString("source_playlist_id", "").takeIf { it.isNotBlank() },
+                    importedSongIds = o.optJSONArray("imported_song_ids")?.let { a ->
+                        (0 until a.length()).map { j -> a.optString(j) }
+                    } ?: emptyList()
                 )
             }
         }
