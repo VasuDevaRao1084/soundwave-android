@@ -33,5 +33,18 @@
             </intent-filter>
         </service>
 
+        <!-- Only ever invoked once google-services.json is added and Firebase
+             is actually configured — see push-notifications setup notes. -->
+        <service
+            android:name=".push.SoundWaveMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="friend_activity" />
+
     </application>
 </manifest>

@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Only wire up Firebase/FCM if google-services.json has actually been added
+// (see push-notifications setup notes) — this keeps CI green for anyone who
+// hasn't finished the Firebase console setup yet, instead of a hard build
+// failure the moment this file is missing.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.soundwave.app"
     compileSdk = 34
@@ -83,4 +91,9 @@ dependencies {
 
     // Google Sign-In
     implementation("com.google.android.gms:play-services-auth:21.2.0")
+
+    // Push notifications (friend requests) — no-ops safely at runtime until
+    // google-services.json is added; see push-notifications setup notes.
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 }

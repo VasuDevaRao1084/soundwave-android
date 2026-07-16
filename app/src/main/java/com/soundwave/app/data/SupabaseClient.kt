@@ -297,6 +297,58 @@ object SupabaseClient {
         })
     }
 
+    /** Batched fetch of several friends' recently-played lists in one call
+     * (avoids the N+1 pattern already fixed elsewhere for friend requests).
+     * Returns a map of userId -> recently_played JSONArray. */
+    suspend fun getFriendsActivity(friendUserIds: List<String>): Map<String, JSONArray> = suspendCancellableCoroutine { cont ->
+        if (friendUserIds.isEmpty()) {
+            cont.resume(emptyMap()); return@suspendCancellableCoroutine
+        }
+        val ids = friendUserIds.joinToString(",")
+        val req = authHeader(
+            Request.Builder().url("$SUPABASE_URL/rest/v1/user_data?id=in.($ids)&select=id,recently_played")
+        ).build()
+        client.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resume(emptyMap())
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                try {
+                    val arr = JSONArray(response.body?.string() ?: "[]")
+                    val map = (0 until arr.length()).mapNotNull { i ->
+                        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val id = o.optString("id")
+                        val played = o.optJSONArray("recently_played") ?: JSONArray()
+                        id to played
+                    }.toMap()
+                    if (cont.isActive) cont.resume(map)
+                } catch (e: Exception) {
+                    if (cont.isActive) cont.resume(emptyMap())
+                }
+            }
+        })
+    }
+
+    /** Uploads this device's FCM token so friend-request push notifications
+     * (sent from a Supabase Edge Function) can reach this user. Safe to call
+     * repeatedly — last write wins, which is exactly what we want on token
+     * refresh. */
+    suspend fun updateFcmToken(userId: String, token: String): Boolean = suspendCancellableCoroutine { cont ->
+        val payload = JSONObject().put("fcm_token", token)
+        val body = payload.toString().toRequestBody("application/json".toMediaType())
+        val req = authHeader(
+            Request.Builder().url("$SUPABASE_URL/rest/v1/profiles?id=eq.$userId").patch(body)
+        ).build()
+        client.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resume(false)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                if (cont.isActive) cont.resume(response.isSuccessful)
+            }
+        })
+    }
+
     /** Read-only fetch of a friend's playlists JSON, for copy-based sharing. */
     suspend fun getFriendPlaylists(friendUserId: String): JSONArray? = suspendCancellableCoroutine { cont ->
         val req = authHeader(

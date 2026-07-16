@@ -1,6 +1,8 @@
 package com.soundwave.app
 
 import android.content.ComponentName
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -55,6 +57,18 @@ class MainActivity : ComponentActivity() {
 
     private val vm: AppViewModel by viewModels()
     private var mediaController: MediaController? = null
+    // Set when the app is opened via a friend-request push notification tap
+    // (see SoundWaveMessagingService); the Compose tree below picks this up
+    // and navigates to the Friends screen once, then clears it.
+    private val pendingOpenFriends = mutableStateOf(false)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("open_friends", false)) {
+            pendingOpenFriends.value = true
+        }
+    }
 
     private val signInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
@@ -84,6 +98,35 @@ class MainActivity : ComponentActivity() {
                 avatarUrl = savedAvatarUrl ?: profile.avatarUrl
             )
             vm.setUser(finalProfile)
+            registerFcmTokenIfAvailable()
+        }
+    }
+
+    /** Best-effort: fetches the current FCM token and uploads it, so friend-
+     * request push notifications can reach this device. Silently does
+     * nothing if Firebase isn't configured yet (no google-services.json) or
+     * the device has no Google Play services — never affects sign-in itself. */
+    private fun registerFcmTokenIfAvailable() {
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token -> vm.updateFcmToken(token) }
+                .addOnFailureListener { /* Firebase not configured yet — ignore */ }
+        } catch (_: Throwable) {
+            // FirebaseApp not initialized (google-services.json missing) — ignore.
+        }
+    }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op either way */ }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -110,6 +153,7 @@ class MainActivity : ComponentActivity() {
         showLastCrashIfAny()
         connectToPlaybackService()
         attemptSilentReauth()
+        requestNotificationPermissionIfNeeded()
 
         vm.controllerBridge = object : AppViewModel.ControllerBridge {
             override fun play(song: Song) {
@@ -225,7 +269,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SoundWaveTheme {
-                AppRoot(vm, onSignInClick = { launchGoogleSignIn() })
+                AppRoot(vm, onSignInClick = { launchGoogleSignIn() }, pendingOpenFriends = pendingOpenFriends)
             }
         }
     }
@@ -376,7 +420,7 @@ class MainActivity : ComponentActivity() {
 private enum class Tab { HOME, SEARCH, LIBRARY, ALBUMS }
 
 @Composable
-private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
+private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit, pendingOpenFriends: androidx.compose.runtime.MutableState<Boolean>) {
     val user by vm.user.collectAsState()
     val avatarPath by vm.avatarPath.collectAsState()
     val workoutPlaylist by vm.workoutPlaylist.collectAsState()
@@ -416,6 +460,8 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     val downloadingIds by vm.downloadingIds.collectAsState()
     val searchHistory by vm.searchHistory.collectAsState()
     val friendPlaylistUpdateCounts by vm.friendPlaylistUpdateCounts.collectAsState()
+    val friendActivity by vm.friendActivity.collectAsState()
+    val friendActivityLoading by vm.friendActivityLoading.collectAsState()
     val sleepTimerMins by vm.sleepTimerMins.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -440,7 +486,17 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
     var openChart by remember { mutableStateOf<Pair<String, List<Song>>?>(null) }
     var showProfile by remember { mutableStateOf(false) }
     var showFriends by remember { mutableStateOf(false) }
+    var showFriendActivity by remember { mutableStateOf(false) }
     var libraryTab by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(pendingOpenFriends.value) {
+        if (pendingOpenFriends.value) {
+            showProfile = false
+            showFriends = true
+            vm.loadFriendRequests()
+            pendingOpenFriends.value = false
+        }
+    }
 
     fun goToTab(t: Tab) {
         showSoundSettings = false
@@ -534,6 +590,12 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         onNameChanged = { name -> vm.updateDisplayName(name) },
                         onOpenFriends = { showProfile = false; showFriends = true; vm.loadFriendRequests() }
                     )
+                    showFriendActivity -> FriendActivityScreen(
+                        activity = friendActivity,
+                        isLoading = friendActivityLoading,
+                        onBack = { showFriendActivity = false; showFriends = true },
+                        onPlay = { song -> vm.playSong(song, listOf(song)) }
+                    )
                     showFriends -> FriendsScreen(
                         friendRequests = friendRequests,
                         searchResult = friendSearchResult,
@@ -547,7 +609,12 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit) {
                         onRespond = { id, accept -> vm.respondToFriendRequest(id, accept) },
                         onOpenFriendPlaylists = { friendId -> vm.loadFriendPlaylists(friendId) },
                         onImportPlaylist = { playlist -> vm.importFriendPlaylist(playlist) },
-                        onClearActionError = { vm.clearFriendActionError() }
+                        onClearActionError = { vm.clearFriendActionError() },
+                        onOpenActivity = {
+                            showFriends = false
+                            showFriendActivity = true
+                            vm.loadFriendActivity()
+                        }
                     )
                     showDiagnostics -> {
                         val context = androidx.compose.ui.platform.LocalContext.current

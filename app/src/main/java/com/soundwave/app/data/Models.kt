@@ -43,3 +43,11 @@ data class FriendRequestItem(
     val status: String, // pending | accepted | declined
     val isIncoming: Boolean // true if the OTHER user sent it to us
 )
+
+/** One friend's recent-listening snapshot for the Activity feed. `songs` is
+ * newest-first (same ordering as recently_played is stored), so songs[0] is
+ * "what they're playing / just played". */
+data class FriendActivity(
+    val friend: FriendProfile,
+    val songs: List<Song>
+)

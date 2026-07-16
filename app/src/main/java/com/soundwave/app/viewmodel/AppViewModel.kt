@@ -394,6 +394,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _friendPlaylistUpdateCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val friendPlaylistUpdateCounts: StateFlow<Map<String, Int>> = _friendPlaylistUpdateCounts.asStateFlow()
 
+    // Friend activity feed ("your friend just played X") — reuses the
+    // recently_played column already synced for the user's own library, no
+    // new backend table needed. Loaded on demand (opening the feed), not
+    // pushed live, so there's no extra always-on network cost.
+    private val _friendActivity = MutableStateFlow<List<com.soundwave.app.data.FriendActivity>>(emptyList())
+    val friendActivity: StateFlow<List<com.soundwave.app.data.FriendActivity>> = _friendActivity.asStateFlow()
+    private val _friendActivityLoading = MutableStateFlow(false)
+    val friendActivityLoading: StateFlow<Boolean> = _friendActivityLoading.asStateFlow()
+
+    fun loadFriendActivity() {
+        val accepted = _friendRequests.value.filter { it.status == "accepted" }
+        if (accepted.isEmpty()) {
+            _friendActivity.value = emptyList()
+            return
+        }
+        _friendActivityLoading.value = true
+        viewModelScope.launch {
+            try {
+                val ids = accepted.map { it.otherUser.id }
+                val activityByUser = com.soundwave.app.data.SupabaseClient.getFriendsActivity(ids)
+                _friendActivity.value = accepted.mapNotNull { req ->
+                    val playedArr = activityByUser[req.otherUser.id] ?: return@mapNotNull null
+                    val songs = parseSongsJson(playedArr)
+                    if (songs.isEmpty()) null else com.soundwave.app.data.FriendActivity(req.otherUser, songs.take(3))
+                }
+            } catch (e: Exception) {
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Activity feed load failed: ${e.message}")
+            } finally {
+                _friendActivityLoading.value = false
+            }
+        }
+    }
+
+    /** Uploads this device's FCM token for friend-request push notifications.
+     * Wrapped so a device with no Firebase config (or a network hiccup)
+     * never affects anything else — this is purely best-effort. */
+    fun updateFcmToken(token: String) {
+        val uid = _user.value?.id ?: return
+        viewModelScope.launch {
+            try {
+                com.soundwave.app.data.SupabaseClient.updateFcmToken(uid, token)
+            } catch (_: Exception) { /* best-effort, retried on next app start / token refresh */ }
+        }
+    }
+
     private val _friendSearchResult = MutableStateFlow<com.soundwave.app.data.FriendProfile?>(null)
     val friendSearchResult: StateFlow<com.soundwave.app.data.FriendProfile?> = _friendSearchResult.asStateFlow()
 
