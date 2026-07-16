@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "125597283177",
+    "project_id": "sound-wave-9c317",
+    "storage_bucket": "sound-wave-9c317.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:125597283177:android:8dcc7bde700912648f03f8",
+        "android_client_info": {
+          "package_name": "com.soundwave.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5gnVYpwXJWFqBoOK-AigyF1bjCxisUCQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
