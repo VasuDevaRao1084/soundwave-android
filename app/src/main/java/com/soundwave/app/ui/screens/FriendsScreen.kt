@@ -172,7 +172,13 @@ fun FriendsScreen(
                 }
 
                 searchResult?.let { profile ->
-                    val alreadyRequested = friendRequests.any { it.otherUser.id == profile.id }
+                    // A previously DECLINED request shouldn't block sending a new
+                    // one — only an actually pending or already-accepted request
+                    // should. Without this check, rejecting someone permanently
+                    // hid the "Send request" button and made it look stuck.
+                    val alreadyRequested = friendRequests.any {
+                        it.otherUser.id == profile.id && it.status != "declined"
+                    }
                     FriendRow(profile = profile) {
                         if (alreadyRequested) {
                             Text("Pending", color = SwTextTertiary, fontSize = 13.sp)

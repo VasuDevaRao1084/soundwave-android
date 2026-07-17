@@ -165,12 +165,20 @@ object SupabaseClient {
         })
     }
 
+    // Uses an upsert (not a plain insert) because of the unique(sender_id,
+    // receiver_id) constraint: if this exact pair already has a row from a
+    // PREVIOUS declined request, a plain insert would 409-conflict and
+    // silently fail — which is exactly the "stuck at pending forever" bug.
+    // on_conflict + merge-duplicates flips that old declined row back to
+    // pending instead of trying (and failing) to create a second one.
     suspend fun sendFriendRequest(senderId: String, receiverId: String): Pair<Boolean, String?> = suspendCancellableCoroutine { cont ->
         val payload = JSONObject().put("sender_id", senderId).put("receiver_id", receiverId).put("status", "pending")
         val body = payload.toString().toRequestBody("application/json".toMediaType())
         val req = authHeader(
-            Request.Builder().url("$SUPABASE_URL/rest/v1/friend_requests").post(body)
-        ).build()
+            Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/friend_requests?on_conflict=sender_id,receiver_id")
+                .post(body)
+        ).header("Prefer", "resolution=merge-duplicates").build()
         client.newCall(req).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
                 if (cont.isActive) cont.resume(false to e.message)

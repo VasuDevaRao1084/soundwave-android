@@ -125,8 +125,83 @@ fun HomeScreen(
     trendingTodayPlaylist: List<Song> = emptyList(),
     hasIncomingFriendRequests: Boolean = false
 ) {
+    // Ambient gradient wash behind the top of the screen — a soft purple glow
+    // fading into the flat background, instead of pure black from the very
+    // first pixel. This is the single change that makes the most difference
+    // to how "alive" the home screen feels (same trick Spotify/Apple Music
+    // use behind their own home headers), so everything else keeps its
+    // normal SwBg and only this top band gets the tint.
+    Box(modifier = Modifier.fillMaxSize().background(SwBg)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(420.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFF2E1F5C).copy(alpha = 0.55f), SwBg)
+                    )
+                )
+        )
+        HomeScreenContent(
+            user = user,
+            recentlyPlayed = recentlyPlayed,
+            savedAlbums = savedAlbums,
+            recommendedSongs = recommendedSongs,
+            topTelugu = topTelugu,
+            topHindi = topHindi,
+            topEnglish = topEnglish,
+            mostSearchedTelugu = mostSearchedTelugu,
+            mostSearchedHindi = mostSearchedHindi,
+            mostSearchedEnglish = mostSearchedEnglish,
+            currentSongId = currentSongId,
+            isAudioPlaying = isAudioPlaying,
+            likedIds = likedIds,
+            onPlay = onPlay,
+            onLike = onLike,
+            onSearchAlbums = onSearchAlbums,
+            onOpenAlbum = onOpenAlbum,
+            onOpenDiagnostics = onOpenDiagnostics,
+            onMoodClick = onMoodClick,
+            onOpenChart = onOpenChart,
+            avatarPath = avatarPath,
+            onOpenProfile = onOpenProfile,
+            workoutPlaylist = workoutPlaylist,
+            trendingTodayPlaylist = trendingTodayPlaylist,
+            hasIncomingFriendRequests = hasIncomingFriendRequests
+        )
+    }
+}
+
+@Composable
+private fun HomeScreenContent(
+    user: UserProfile?,
+    recentlyPlayed: List<Song>,
+    savedAlbums: List<SavedAlbum>,
+    recommendedSongs: List<Song>,
+    topTelugu: List<Song>,
+    topHindi: List<Song>,
+    topEnglish: List<Song>,
+    mostSearchedTelugu: List<Song>,
+    mostSearchedHindi: List<Song>,
+    mostSearchedEnglish: List<Song>,
+    currentSongId: String?,
+    isAudioPlaying: Boolean,
+    likedIds: Set<String>,
+    onPlay: (Song) -> Unit,
+    onLike: (Song) -> Unit,
+    onSearchAlbums: () -> Unit,
+    onOpenAlbum: (SavedAlbum) -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onMoodClick: (String, String) -> Unit,
+    onOpenChart: (String, List<Song>) -> Unit,
+    avatarPath: String?,
+    onOpenProfile: () -> Unit,
+    workoutPlaylist: List<Song>,
+    trendingTodayPlaylist: List<Song>,
+    hasIncomingFriendRequests: Boolean
+) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SwBg),
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 120.dp)
     ) {
         // ── Header ─────────────────────────────────────────────────────────────
@@ -145,14 +220,23 @@ fun HomeScreen(
                 )
                 ProfileAvatarButton(user = user, avatarPath = avatarPath, hasNotification = hasIncomingFriendRequests, onClick = onOpenProfile)
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(8.dp))
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth()
+                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Refresh, contentDescription = null, tint = SwPurple, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("All devices synced", color = SwPurple, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(SwPurple.copy(alpha = 0.16f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = SwPurple, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("All devices synced", color = SwPurple, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+                Spacer(Modifier.weight(1f))
                 Icon(
                     Icons.Filled.BugReport,
                     contentDescription = "Diagnostics",
@@ -160,7 +244,7 @@ fun HomeScreen(
                     modifier = Modifier.size(18.dp).clickable(onClick = onOpenDiagnostics)
                 )
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
         }
 
         // ── Hero card: jump back into the most recent song ──────────────────────
@@ -606,16 +690,21 @@ private fun RecentSongCard(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isPlaying) Color(0xFF221C38) else Color(0xFF15131C))
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isPlaying) Color(0xFF241C42) else Color(0xFF15131C))
+            .then(
+                if (isPlaying)
+                    Modifier.border(1.dp, SwPurple.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                else Modifier
+            )
             .clickable(onClick = onClick)
-            .padding(end = 8.dp),
+            .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .size(52.dp)
+                .clip(RoundedCornerShape(9.dp))
                 .background(SwSurface),
             contentAlignment = Alignment.Center
         ) {
@@ -624,13 +713,14 @@ private fun RecentSongCard(
                     model = song.thumbnail,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High
                 )
             } else {
                 Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SwTextTertiary)
             }
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(10.dp))
         Text(
             song.title,
             color = if (isPlaying) SwPurple else Color.White,
@@ -640,6 +730,11 @@ private fun RecentSongCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+        if (isPlaying) {
+            Spacer(Modifier.width(4.dp))
+            PlayingWaveform(isPlaying = true, color = SwPurple, barWidth = 2.dp, maxHeight = 14.dp)
+            Spacer(Modifier.width(6.dp))
+        }
     }
 }
 
