@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,10 +58,12 @@ fun FriendsScreen(
     onOpenFriendPlaylists: (String) -> Unit,
     onImportPlaylist: (Playlist) -> Unit,
     onClearActionError: () -> Unit,
-    onOpenActivity: () -> Unit = {}
+    onOpenActivity: () -> Unit = {},
+    onRemoveFriend: (String) -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
     var expandedFriendId by remember { mutableStateOf<String?>(null) }
+    var removeTarget by remember { mutableStateOf<FriendRequestItem?>(null) }
 
     val accepted = friendRequests.filter { it.status == "accepted" }
     val incoming = friendRequests.filter { it.status == "pending" && it.isIncoming }
@@ -259,20 +262,30 @@ fun FriendsScreen(
             items(accepted, key = { it.requestId }) { req ->
                 Column {
                     FriendRow(profile = req.otherUser) {
-                        Text(
-                            if (expandedFriendId == req.otherUser.id) "Hide" else "View playlists",
-                            color = SwPurple,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.clickable {
-                                if (expandedFriendId == req.otherUser.id) {
-                                    expandedFriendId = null
-                                } else {
-                                    expandedFriendId = req.otherUser.id
-                                    onOpenFriendPlaylists(req.otherUser.id)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(
+                                if (expandedFriendId == req.otherUser.id) "Hide" else "View playlists",
+                                color = SwPurple,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clickable {
+                                    if (expandedFriendId == req.otherUser.id) {
+                                        expandedFriendId = null
+                                    } else {
+                                        expandedFriendId = req.otherUser.id
+                                        onOpenFriendPlaylists(req.otherUser.id)
+                                    }
                                 }
-                            }
-                        )
+                            )
+                            Icon(
+                                Icons.Filled.PersonRemove,
+                                contentDescription = "Remove friend",
+                                tint = SwTextTertiary,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable { removeTarget = req }
+                            )
+                        }
                     }
                     if (expandedFriendId == req.otherUser.id) {
                         if (friendPlaylists.isEmpty()) {
@@ -296,6 +309,20 @@ fun FriendsScreen(
                 }
             }
         }
+    }
+
+    removeTarget?.let { req ->
+        AlertDialog(
+            onDismissRequest = { removeTarget = null },
+            title = { Text("Remove ${req.otherUser.displayName ?: req.otherUser.email}?") },
+            text = { Text("You'll stop seeing each other's activity and shared playlists. Either of you can send a new friend request afterward.") },
+            confirmButton = {
+                TextButton(onClick = { onRemoveFriend(req.requestId); removeTarget = null }) {
+                    Text("Remove", color = Color(0xFFFF6B6B))
+                }
+            },
+            dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("Cancel") } }
+        )
     }
 }
 

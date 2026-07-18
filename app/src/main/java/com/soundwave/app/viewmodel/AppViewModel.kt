@@ -517,6 +517,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Deletes the friendship entirely (not a status change) — this way a
+     * removed friend starts completely fresh: either person can send a brand
+     * new request afterward with no leftover row to conflict with. */
+    fun removeFriend(requestId: String) {
+        viewModelScope.launch {
+            try {
+                val success = com.soundwave.app.data.SupabaseClient.removeFriend(requestId)
+                if (success) {
+                    loadFriendRequests()
+                } else {
+                    _friendActionError.value = "Couldn't remove friend — try again."
+                }
+            } catch (e: Exception) {
+                _friendActionError.value = "Couldn't remove friend: ${e.message}"
+                com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "Remove friend failed: ${e.message}")
+            }
+        }
+    }
+
     fun loadFriendPlaylists(friendId: String) {
         _friendPlaylists.value = emptyList()
         currentFriendPlaylistsOwnerId = friendId

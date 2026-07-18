@@ -52,6 +52,10 @@ import com.soundwave.app.ui.theme.SwTextSecondary
 import com.soundwave.app.ui.theme.SwTextTertiary
 import com.soundwave.app.ui.theme.extractAlbumTheme
 
+// Diagnostics/error-log access is restricted to this one account — never
+// shown to regular users, who shouldn't see internal error details at all.
+private const val OWNER_EMAIL = "vasudevarao1084@gmail.com"
+
 @Composable
 private fun ProfileAvatarButton(user: UserProfile?, avatarPath: String?, hasNotification: Boolean = false, onClick: () -> Unit) {
     val localFile = remember(avatarPath) { avatarPath?.let { java.io.File(it) } }
@@ -237,12 +241,17 @@ private fun HomeScreenContent(
                     Text("All devices synced", color = SwPurple, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
                 Spacer(Modifier.weight(1f))
-                Icon(
-                    Icons.Filled.BugReport,
-                    contentDescription = "Diagnostics",
-                    tint = SwTextTertiary,
-                    modifier = Modifier.size(18.dp).clickable(onClick = onOpenDiagnostics)
-                )
+                // Diagnostics/error log is only ever shown to the developer's
+                // own account — regular users never see the bug icon at all,
+                // let alone the error messages it opens.
+                if (user?.email?.equals(OWNER_EMAIL, ignoreCase = true) == true) {
+                    Icon(
+                        Icons.Filled.BugReport,
+                        contentDescription = "Diagnostics",
+                        tint = SwTextTertiary,
+                        modifier = Modifier.size(18.dp).clickable(onClick = onOpenDiagnostics)
+                    )
+                }
             }
             Spacer(Modifier.height(24.dp))
         }

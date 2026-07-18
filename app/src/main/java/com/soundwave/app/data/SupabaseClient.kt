@@ -357,6 +357,23 @@ object SupabaseClient {
         })
     }
 
+    /** Deletes a friend_requests row entirely — used both for removing an
+     * accepted friend and (implicitly) for cleanly starting over, since a
+     * deleted row can never conflict with a fresh sendFriendRequest upsert. */
+    suspend fun removeFriend(requestId: String): Boolean = suspendCancellableCoroutine { cont ->
+        val req = authHeader(
+            Request.Builder().url("$SUPABASE_URL/rest/v1/friend_requests?id=eq.$requestId").delete()
+        ).build()
+        client.newCall(req).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resume(false)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                if (cont.isActive) cont.resume(response.isSuccessful)
+            }
+        })
+    }
+
     /** Read-only fetch of a friend's playlists JSON, for copy-based sharing. */
     suspend fun getFriendPlaylists(friendUserId: String): JSONArray? = suspendCancellableCoroutine { cont ->
         val req = authHeader(

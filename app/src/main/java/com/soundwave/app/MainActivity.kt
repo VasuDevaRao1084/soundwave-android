@@ -615,9 +615,10 @@ private fun AppRoot(vm: AppViewModel, onSignInClick: () -> Unit, pendingOpenFrie
                             showFriends = false
                             showFriendActivity = true
                             vm.loadFriendActivity()
-                        }
+                        },
+                        onRemoveFriend = { requestId -> vm.removeFriend(requestId) }
                     )
-                    showDiagnostics -> {
+                    showDiagnostics && user?.email?.equals("vasudevarao1084@gmail.com", ignoreCase = true) == true -> {
                         val context = androidx.compose.ui.platform.LocalContext.current
                         DiagnosticsScreen(
                             entries = remember(showDiagnostics) { com.soundwave.app.data.ErrorLog.getAll(context) },
