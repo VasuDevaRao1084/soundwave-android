@@ -360,16 +360,21 @@ object SupabaseClient {
     /** Deletes a friend_requests row entirely — used both for removing an
      * accepted friend and (implicitly) for cleanly starting over, since a
      * deleted row can never conflict with a fresh sendFriendRequest upsert. */
-    suspend fun removeFriend(requestId: String): Boolean = suspendCancellableCoroutine { cont ->
+    suspend fun removeFriend(requestId: String): Pair<Boolean, String?> = suspendCancellableCoroutine { cont ->
         val req = authHeader(
             Request.Builder().url("$SUPABASE_URL/rest/v1/friend_requests?id=eq.$requestId").delete()
         ).build()
         client.newCall(req).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                if (cont.isActive) cont.resume(false)
+                if (cont.isActive) cont.resume(false to e.message)
             }
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                if (cont.isActive) cont.resume(response.isSuccessful)
+                if (response.isSuccessful) {
+                    if (cont.isActive) cont.resume(true to null)
+                } else {
+                    val detail = "HTTP ${response.code}: ${response.body?.string()?.take(200)}"
+                    if (cont.isActive) cont.resume(false to detail)
+                }
             }
         })
     }

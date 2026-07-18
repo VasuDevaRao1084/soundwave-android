@@ -523,11 +523,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun removeFriend(requestId: String) {
         viewModelScope.launch {
             try {
-                val success = com.soundwave.app.data.SupabaseClient.removeFriend(requestId)
+                val (success, detail) = com.soundwave.app.data.SupabaseClient.removeFriend(requestId)
                 if (success) {
                     loadFriendRequests()
                 } else {
-                    _friendActionError.value = "Couldn't remove friend — try again."
+                    _friendActionError.value = "Couldn't remove friend — ${detail ?: "unknown error"}"
+                    com.soundwave.app.data.ErrorLog.log(appContext, "FRIENDS", "removeFriend failed: $detail")
                 }
             } catch (e: Exception) {
                 _friendActionError.value = "Couldn't remove friend: ${e.message}"
