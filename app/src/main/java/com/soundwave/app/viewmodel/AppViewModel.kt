@@ -912,8 +912,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (now - lastRecommendationRefresh < 60_000) return
         lastRecommendationRefresh = now
 
-        val topArtists = artistPlayCounts.entries.sortedByDescending { it.value }.take(3).map { it.key }
+        // Always include the artist of whatever's playing RIGHT NOW first —
+        // otherwise recommendations only reflect all-time historical
+        // favorites and can feel completely disconnected from the song
+        // someone is actually listening to in the moment.
+        val historicalTop = artistPlayCounts.entries.sortedByDescending { it.value }.map { it.key }
+        val topArtists = (listOf(song.artist) + historicalTop).distinct().take(3)
         if (topArtists.isEmpty()) return
+
+        // JioSaavn's search is a generic fuzzy text search, not an "artist's
+        // songs" lookup — searching an artist's name can just as easily
+        // surface unrelated mood-compilation remixes that happen to credit
+        // them in passing ("Workout Trap Mix", "Analogue Mix", etc). Without
+        // filtering for a genuine artist match, recommendations end up
+        // looking random. A few compilation-style keywords are also
+        // deprioritized since they're rarely a good "more like this" pick
+        // even when the artist match is technically real.
+        val noisyTitleHints = listOf("mix", "bangers", "workout", "vol.", "compilation", "hits")
 
         viewModelScope.launch {
             val alreadyPlayedIds = _recentlyPlayed.value.map { it.id }.toSet()
@@ -921,12 +936,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             for (artist in topArtists) {
                 try {
                     val results = SaavnApi.search(artist)
-                    recommendations.addAll(
-                        results.filter { it.id !in alreadyPlayedIds && it.streamUrl != null }.take(5)
-                    )
+                    val genuineMatches = results.filter { candidate ->
+                        candidate.id !in alreadyPlayedIds &&
+                            candidate.streamUrl != null &&
+                            (candidate.artist.contains(artist, ignoreCase = true) ||
+                                artist.contains(candidate.artist, ignoreCase = true))
+                    }
+                    val (clean, noisy) = genuineMatches.partition { candidate ->
+                        noisyTitleHints.none { hint -> candidate.title.contains(hint, ignoreCase = true) }
+                    }
+                    // Prefer genuinely-titled songs; only fall back to the
+                    // "noisy" compilation-style ones if there weren't enough
+                    // clean matches, rather than excluding them outright.
+                    recommendations.addAll((clean + noisy).take(5))
                 } catch (e: Exception) { /* skip this artist on failure, try the rest */ }
             }
-            _recommendedSongs.value = recommendations.distinctBy { it.id }.shuffled().take(15)
+            // Keep the current song's artist results first (most relevant to
+            // what's playing right now) instead of shuffling everything
+            // together, which was diluting relevance for no real benefit.
+            _recommendedSongs.value = recommendations.distinctBy { it.id }.take(15)
         }
     }
 
